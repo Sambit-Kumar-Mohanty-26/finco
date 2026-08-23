@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.29.2",
   "scripts": {
-    "dev": "pnpm --filter @finco/web dev",
+    "dev": "pnpm --parallel --filter @finco/web --filter @finco/api dev",
     "build": "pnpm --filter @finco/web build",
     "start": "pnpm --filter @finco/web start",
     "lint": "pnpm --filter @finco/web lint",
@@ -12,7 +12,11 @@
     "check": "pnpm -r --if-present check",
     "e2e:shoot": "node apps/web/e2e/shoot.mjs",
     "e2e:arc": "node apps/web/e2e/arc.mjs",
-    "logo:cutout": "node apps/web/e2e/cutout.mjs apps/web/e2e/shots/logo.png apps/web/public"
+    "logo:cutout": "node apps/web/e2e/cutout.mjs apps/web/e2e/shots/logo.png apps/web/public",
+    "dev:web": "pnpm --filter @finco/web dev",
+    "dev:api": "pnpm --filter @finco/api dev",
+    "db:generate": "pnpm --filter @finco/api db:generate",
+    "db:migrate": "pnpm --filter @finco/api db:migrate"
   },
   "engines": {
     "node": ">=22.11",

@@ -1,0 +1,40 @@
+# Render blueprint — three Node entrypoints from one build, plus the cron.
+#
+# Deliberately NOT the free tier for api/worker: a spun-down service breaks SSE
+# and cold-starts every demo, and a spun-down worker silently stops consuming
+# jobs, so runs simply never start.
+services:
+  - type: web
+    name: finco-api
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @finco/api typecheck
+    startCommand: pnpm --filter @finco/api start
+    healthCheckPath: /health
+    envVars:
+      - { key: DATABASE_URL, sync: false }
+      - { key: ALLOWED_ORIGINS, sync: false }
+      - { key: NODE_ENV, value: production }
+
+  - type: worker
+    name: finco-worker
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    startCommand: pnpm --filter @finco/api start:worker
+    envVars:
+      - { key: DATABASE_URL, sync: false }
+      - { key: NODE_ENV, value: production }
+
+  - type: cron
+    name: finco-recon-pull
+    runtime: node
+    region: singapore
+    schedule: "30 0 * * *" # 06:00 IST
+    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    startCommand: pnpm --filter @finco/api cron:recon-pull
+    envVars:
+      - { key: DATABASE_URL, sync: false }
+      - { key: NODE_ENV, value: production }
