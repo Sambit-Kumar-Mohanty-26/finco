@@ -3,13 +3,17 @@
 # Deliberately NOT the free tier for api/worker: a spun-down service breaks SSE
 # and cold-starts every demo, and a spun-down worker silently stops consuming
 # jobs, so runs simply never start.
+# NODE_ENV=production makes pnpm skip devDependencies, so installs pass
+# --prod=false: the build-time typecheck needs typescript and @types, which
+# are dev deps. tsx is a real runtime dependency here (start runs TypeScript
+# directly) and lives in "dependencies" for that reason.
 services:
   - type: web
     name: finco-api
     runtime: node
     region: singapore
     plan: starter
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @finco/api typecheck
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @finco/api typecheck
     startCommand: pnpm --filter @finco/api start
     healthCheckPath: /health
     envVars:
@@ -22,7 +26,7 @@ services:
     runtime: node
     region: singapore
     plan: starter
-    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false
     startCommand: pnpm --filter @finco/api start:worker
     envVars:
       - { key: DATABASE_URL, sync: false }
@@ -33,7 +37,7 @@ services:
     runtime: node
     region: singapore
     schedule: "30 0 * * *" # 06:00 IST
-    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false
     startCommand: pnpm --filter @finco/api cron:recon-pull
     envVars:
       - { key: DATABASE_URL, sync: false }
