@@ -1,0 +1,572 @@
+@import "tailwindcss";
+
+/* ============================================================
+   INK AND SIGNAL — design spec v2 §4, Option A. DECIDED.
+   Do not change a token value without approval (§9).
+   ============================================================ */
+@theme {
+  /* ground */
+  --color-ink: #0e1013;
+  --color-ink-soft: #171a1f;
+  --color-paper: #fcfbf9;
+  --color-paper-cool: #f7f8fa;
+
+  /* text — one colour at alpha, not a grey scale */
+  --color-on-ink: #f4f4f2;
+  --color-on-ink-hush: #f4f4f299;
+  --color-on-paper: #14161a;
+  --color-on-paper-hush: #14161a99;
+
+  /* the single loud thing: proof / resolved / closes to zero */
+  --color-signal: #3ce08f;
+  --color-signal-deep: #12734a;
+  --color-signal-wash: #e6faf0;
+
+  /* semantic — product surfaces only, never page furniture */
+  --color-proven: #2c4a63;
+  --color-proposed: #d97757;
+  --color-refused: #c98a12;
+
+  --color-line-dark: #ffffff14;
+  --color-line-light: #14161a14;
+
+  --font-display: var(--font-instrument), "Newsreader", Georgia, serif;
+  --font-body: var(--font-geist), "Inter Tight", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* physics — a real damped spring, expressed as a linear() curve so the
+     browser interpolates it natively. Gentle overshoot: it settles, it does
+     not bounce. This is what makes things feel like objects. */
+  --ease-spring: linear(
+    0, 0.0033, 0.0132 2.2%, 0.0526 4.6%, 0.1157 7.1%, 0.2013 9.8%, 0.3069 12.6%,
+    0.4288 15.6%, 0.5613 18.7%, 0.6982 21.9%, 0.8327 25.2%, 0.9583 28.6%,
+    1.0248 31%, 1.0704 33.4%, 1.0942 35.6%, 1.0994 37.6%, 1.0895 40%,
+    1.0682 42.8%, 1.0397 46%, 1.0135 49.5%, 0.9948 53.4%, 0.9862 57.6%,
+    0.9873 62.6%, 0.9944 69%, 1.0018 77.4%, 1.0038 87%, 1
+  );
+  /* long, unhurried glide for large surfaces */
+  --ease-glide: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* motion — spec §5. The whole system. No other curves. */
+  --ease-enter: cubic-bezier(0.16, 0, 0.13, 1);
+  --ease-ui: cubic-bezier(0.2, 1, 0.4, 1);
+  --ease-morph: cubic-bezier(0.65, 0.05, 0.36, 1);
+  --ease-exit: cubic-bezier(0.6, 0, 0.8, 0);
+}
+
+:root {
+  /* elevation — product surfaces must feel physically present */
+  --shadow-card: 0 1px 2px rgba(20, 22, 26, 0.04), 0 4px 12px rgba(20, 22, 26, 0.05);
+  --shadow-frame:
+    0 2px 4px rgba(20, 22, 26, 0.04),
+    0 12px 28px rgba(20, 22, 26, 0.08),
+    0 48px 96px -24px rgba(20, 22, 26, 0.16);
+  --shadow-lift:
+    0 4px 10px rgba(20, 22, 26, 0.06),
+    0 24px 56px -12px rgba(20, 22, 26, 0.14);
+
+  --dur-micro: 150ms;
+  --dur-ui: 300ms;
+  --dur-enter: 750ms;
+  --dur-morph: 600ms;
+  --dur-ambient: 15s;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--color-paper);
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-on-paper);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-signal);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ============================================================
+   MOTION PRIMITIVES
+   Entrances settle. Exits accelerate. Never the same curve.
+   ============================================================ */
+
+@keyframes slideUpAndFade {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes slideUpMoreAndFade {
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fadeInCopy {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeOutBlur {
+  from { opacity: 1; filter: blur(0); transform: none; }
+  to   { opacity: 0; filter: blur(6px); transform: translateY(-6px); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes drawX {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* v3 §7A — film grain jitter. Borrowed device, our own values. */
+@keyframes grainJitter {
+  0%   { transform: translate(0, 0); }
+  20%  { transform: translate(-6px, 4px); }
+  40%  { transform: translate(5px, -7px); }
+  60%  { transform: translate(-4px, -3px); }
+  80%  { transform: translate(7px, 5px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes cursorBlink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* transform only: an opacity keyframe here would override the scroll-driven
+   fade on .hero-hint, because animations win over plain declarations. */
+@keyframes scrollNudge {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(6px); }
+}
+
+/* --- v5 cinematic layer ------------------------------------------------ */
+
+/* a surface arriving as an object: falls slightly forward, then settles */
+@keyframes frameRise {
+  from {
+    opacity: 0;
+    transform: perspective(2200px) rotateX(7deg) translateY(64px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(2200px) rotateX(0deg) translateY(0) scale(1);
+  }
+}
+
+/* light catching glass, once, as the surface lands */
+@keyframes sheen {
+  0%   { transform: translateX(-140%) skewX(-18deg); opacity: 0; }
+  12%  { opacity: 0.55; }
+  60%  { opacity: 0.35; }
+  100% { transform: translateX(240%) skewX(-18deg); opacity: 0; }
+}
+
+/* words rising into place */
+@keyframes wordRise {
+  from { opacity: 0; transform: translateY(0.42em); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ambient warmth, very slow, never noticeable as motion */
+@keyframes auroraA {
+  0%, 100% { transform: translate3d(-4%, -2%, 0) scale(1); }
+  50%      { transform: translate3d(6%, 4%, 0) scale(1.12); }
+}
+@keyframes auroraB {
+  0%, 100% { transform: translate3d(5%, 3%, 0) scale(1.08); }
+  50%      { transform: translate3d(-6%, -3%, 0) scale(1); }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes shine {
+  from { transform: translateX(-120%); }
+  to   { transform: translateX(220%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* --- v5 cinematic utilities -------------------------------------------- */
+
+/* hero surface: arrives once, on load, with spring settle */
+.frame-rise {
+  animation: frameRise 1400ms var(--ease-spring) 160ms both;
+  transform-origin: 50% 0%;
+  will-change: transform, opacity;
+}
+
+.sheen {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    transparent
+  );
+  animation: sheen 1800ms var(--ease-glide) 900ms both;
+}
+
+/* headline words. --i is set per word. */
+.words > span {
+  display: inline-block;
+  animation: wordRise 900ms var(--ease-spring) both;
+  animation-delay: calc(var(--i, 0) * 55ms + 80ms);
+}
+
+/* soothing ambient wash behind the hero */
+/* clipped to its own box: the wash may bleed past the viewport visually but
+   must never widen the document. */
+.aurora {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 820px;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.aurora > span {
+  filter: blur(70px);
+  opacity: 0.55;
+}
+.aurora span {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+}
+.aurora span:nth-child(1) {
+  inset: 0 45% 30% 6%;
+  background: radial-gradient(circle, rgba(60, 224, 143, 0.16), transparent 68%);
+  animation: auroraA 34s ease-in-out infinite;
+}
+.aurora span:nth-child(2) {
+  inset: 8% 8% 20% 48%;
+  background: radial-gradient(circle, rgba(217, 119, 87, 0.14), transparent 68%);
+  animation: auroraB 42s ease-in-out infinite;
+}
+
+/* --- reveal on real intersection, one shot ------------------------------ */
+/* Hidden until played. Two independent guarantees that it becomes visible and
+   STAYS visible:
+     1. `.rv.rv-in { opacity: 1 }` changes the underlying value, so even if an
+        animation's fill does not cover opacity the element cannot fall back to
+        transparent.
+     2. every keyframe below, including 100%, sets opacity explicitly.
+   The first version of this had opacity only up to 58%, so fill-mode had
+   nothing to hold at the end and elements vanished after animating. */
+.rv { opacity: 0; }
+.rv.rv-in { opacity: 1; }
+
+/* A CURVED path, not a straight one — and mostly vertical.
+   Travel is 64px up against 14px sideways, so it rises rather than slides; the
+   sideways component only bows the path. The midpoints sit deliberately OFF
+   the straight line between start and end, and the keyframe spacing carries
+   the deceleration, which is why the timing function is linear: here the
+   curve IS the easing. --dx picks which way the bow leans. */
+@keyframes arcIn {
+  0% {
+    opacity: 0;
+    transform: translate(calc(var(--dx, -1) * 14px), 64px)
+      rotate(calc(var(--dx, -1) * 1.1deg)) scale(0.972);
+  }
+  30% {
+    opacity: 0.65;
+    transform: translate(calc(var(--dx, -1) * 13px), 26px)
+      rotate(calc(var(--dx, -1) * 0.8deg)) scale(0.984);
+  }
+  62% {
+    opacity: 1;
+    transform: translate(calc(var(--dx, -1) * 6px), 5px)
+      rotate(calc(var(--dx, -1) * 0.32deg)) scale(0.996);
+  }
+  84% {
+    opacity: 1;
+    transform: translate(calc(var(--dx, -1) * 1px), -3px) rotate(0deg) scale(1.003);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+}
+
+/* the same bow, with the surface tipping back on its top edge as it rises */
+@keyframes arcFrame {
+  0% {
+    opacity: 0;
+    transform: perspective(2200px) translate(calc(var(--dx, 1) * 18px), 78px)
+      rotateX(7deg) rotate(calc(var(--dx, 1) * 0.9deg)) scale(0.962);
+  }
+  30% {
+    opacity: 0.6;
+    transform: perspective(2200px) translate(calc(var(--dx, 1) * 16px), 31px)
+      rotateX(4.4deg) rotate(calc(var(--dx, 1) * 0.62deg)) scale(0.979);
+  }
+  62% {
+    opacity: 1;
+    transform: perspective(2200px) translate(calc(var(--dx, 1) * 7px), 6px)
+      rotateX(1.5deg) rotate(calc(var(--dx, 1) * 0.24deg)) scale(0.995);
+  }
+  84% {
+    opacity: 1;
+    transform: perspective(2200px) translate(calc(var(--dx, 1) * 1px), -4px)
+      rotateX(-0.4deg) rotate(0deg) scale(1.004);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(2200px) translate(0, 0) rotateX(0deg) rotate(0deg) scale(1);
+  }
+}
+
+.rv-arc.rv-in { animation: arcIn 1100ms linear var(--rv-delay, 0ms) both; }
+.rv-frame.rv-in {
+  animation: arcFrame 1300ms linear var(--rv-delay, 0ms) both;
+  transform-origin: 50% 0%;
+}
+
+/* A stack animates its CHILDREN only. The container must never animate too —
+   that is what made whole grids fade out from under their own cards. */
+.rv-stack.rv-in { animation: none; opacity: 1; }
+.rv-stack.rv-in > * { animation: arcIn 950ms linear both; }
+.rv-stack.rv-in > *:nth-child(1) { animation-delay: 0ms; }
+.rv-stack.rv-in > *:nth-child(2) { animation-delay: 85ms; }
+.rv-stack.rv-in > *:nth-child(3) { animation-delay: 170ms; }
+.rv-stack.rv-in > *:nth-child(4) { animation-delay: 255ms; }
+.rv-stack.rv-in > *:nth-child(5) { animation-delay: 340ms; }
+.rv-stack.rv-in > *:nth-child(6) { animation-delay: 425ms; }
+.rv-stack.rv-in > *:nth-child(n + 7) { animation-delay: 510ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rv, .rv.rv-in { opacity: 1; }
+}
+
+/* --- HERO: one continuous camera move ----------------------------------
+   Mechanism from mercury.com: a tall track with a sticky viewport-height
+   child. Pin travel = track − viewport. A single --hero-p (0→1) drives every
+   transform below, so scrolling costs one custom-property write and zero
+   React renders. Mercury maps the same value onto video.currentTime; we map
+   it onto transforms and keep the product as live DOM.
+   Only transform/opacity are animated — nothing here triggers layout. */
+.hero-track {
+  --hero-p: 0;
+  position: relative;
+  height: 2250px;
+}
+.hero-pin {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+/* the environment — Option B replaces this layer wholesale */
+.hero-env { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.hero-env-floor {
+  position: absolute; inset: 42% 0 0 0;
+  background: linear-gradient(180deg, transparent, rgba(20, 22, 26, 0.045));
+}
+.hero-env-rules {
+  position: absolute; inset: 0;
+  opacity: calc(0.5 - var(--hero-p) * 0.5);
+  background-image: repeating-linear-gradient(
+    to bottom, rgba(20, 22, 26, 0.035) 0 1px, transparent 1px 38px);
+  mask-image: radial-gradient(70% 60% at 50% 45%, #000, transparent 78%);
+}
+.hero-env-glow { position: absolute; border-radius: 50%; filter: blur(72px); }
+.hero-env-glow-a {
+  inset: 4% 52% 44% 6%;
+  background: radial-gradient(circle, rgba(60, 224, 143, 0.17), transparent 70%);
+  animation: auroraA 34s ease-in-out infinite;
+}
+.hero-env-glow-b {
+  inset: 10% 8% 38% 50%;
+  background: radial-gradient(circle, rgba(217, 119, 87, 0.15), transparent 70%);
+  animation: auroraB 42s ease-in-out infinite;
+}
+/* the environment recedes as the camera closes in */
+.hero-env-floor, .hero-env-glow {
+  opacity: clamp(0, calc(1 - (var(--hero-p) - 0.5) * 2.6), 1);
+}
+
+/* copy leads, then gets out of the camera's way */
+.hero-copy {
+  position: absolute;
+  top: clamp(88px, 13vh, 150px);
+  left: 50%;
+  width: min(760px, calc(100% - 48px));
+  text-align: center;
+  transform: translateX(-50%) translateY(calc(var(--hero-p) * -40px));
+  opacity: clamp(0, calc(1 - var(--hero-p) * 3.2), 1);
+  pointer-events: auto;
+  z-index: 2;
+}
+.hero-copy[data-gone="true"] { pointer-events: none; }
+
+.hero-hint {
+  position: absolute;
+  bottom: 26px; left: 50%;
+  transform: translateX(-50%);
+  opacity: clamp(0, calc(1 - var(--hero-p) * 4), 1);
+  z-index: 2;
+}
+
+/* the camera. scale/rotateX/translateY only — no layout properties. */
+.hero-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  perspective: 1800px;
+  z-index: 1;
+}
+.hero-product {
+  width: min(1180px, calc(100vw - 56px));
+  transform-origin: 50% 46%;
+  /* The product is NOT present at rest. The shot opens on the copy alone;
+     the product emerges from nothing as the camera finds it, rising from low
+     and far. This also removes any chance of it colliding with the CTAs at
+     the top, at any viewport size. */
+  opacity: clamp(0, calc((var(--hero-p) - 0.32) * 4.2), 1);
+  transform:
+    translateY(calc((1 - var(--hero-p)) * 30vh))
+    scale(calc(0.3 + 0.7 * var(--hero-p)))
+    rotateX(calc((1 - var(--hero-p)) * 13deg));
+  will-change: transform;
+}
+
+/* browser chrome dissolves over the last 30%: traffic lights, URL bar, radius,
+   shadow. The SIDEBAR stays — a real app at fullscreen keeps its navigation;
+   it is the browser that goes away. */
+.app-frame-var {
+  --chrome: clamp(0, calc((1 - var(--hero-p)) / 0.3), 1);
+  border-radius: calc(var(--chrome) * 14px);
+  border: 1px solid rgba(20, 22, 26, calc(var(--chrome) * 0.08));
+  box-shadow:
+    0 2px 4px rgba(20, 22, 26, calc(var(--chrome) * 0.04)),
+    0 12px 28px rgba(20, 22, 26, calc(var(--chrome) * 0.08)),
+    0 48px 96px -24px rgba(20, 22, 26, calc(var(--chrome) * 0.16));
+}
+.app-frame-bar {
+  opacity: var(--chrome);
+  transform: translateY(calc((var(--chrome) - 1) * 10px));
+}
+
+/* MOBILE: no pin, no scrub. Same story, one screen. */
+@media (max-width: 639px) {
+  .hero-track { height: auto; }
+  .hero-pin { position: static; height: auto; padding: 96px 0 64px; display: block; }
+  .hero-copy { position: static; transform: none; opacity: 1; width: auto; padding: 0 24px; }
+  .hero-hint { display: none; }
+  .hero-stage { position: static; perspective: none; margin-top: 40px; padding: 0 16px; }
+  .hero-product {
+    width: 100%;
+    opacity: 1;
+    transform: none;
+    animation: arcIn 900ms linear both;
+  }
+  .hero-env-rules { opacity: 0.28; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-product { animation: none; }
+}
+
+/* things you can pick up */
+.lift {
+  transition:
+    transform 420ms var(--ease-spring),
+    box-shadow 420ms var(--ease-glide),
+    background-color 150ms var(--ease-ui);
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+}
+
+/* page-wide film grain, barely there, for texture on flat light */
+.filmgrain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.028;
+  mix-blend-mode: multiply;
+}
+
+/* v3 §7A — grain jitters in place. steps(1) so it stutters rather than slides. */
+.grain {
+  animation: grainJitter 2.6s steps(1) infinite;
+}
+
+/* terminal cursor. steps(1) is the point — it must snap, never fade. */
+.cursor::after {
+  content: "";
+  display: inline-block;
+  width: 0.52em;
+  height: 1em;
+  margin-left: 0.14em;
+  translate: 0 0.14em;
+  background: currentColor;
+  animation: cursorBlink 1.05s steps(1) infinite;
+}
+
+.nudge {
+  animation: scrollNudge 2.2s var(--ease-ui) infinite;
+}
+
+/* wide content scrolls inside its own container; the body never does */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+/* edge mask for marquees */
+.mask-edges {
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

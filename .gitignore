@@ -1,0 +1,54 @@
+# planning docs — local only
+notes/
+
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# production
+dist/
+
+# env
+.env
+.env*.local
+!.env.example
+
+# local run artefacts (seeded scenarios, truth files, scorecards)
+.local/
+
+# vercel / turbo
+.vercel
+.turbo
+
+# typescript
+*.tsbuildinfo
+
+# testing
+coverage/
+playwright-report/
+test-results/
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# visual QA captures
+apps/web/e2e/shots/
+
+# stray shots if a script is run from the wrong cwd
+e2e/shots/

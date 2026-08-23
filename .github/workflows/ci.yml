@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Playwright is a root devDependency used only by e2e/, and CI never
+      # drives a browser, so the browser download is skipped deliberately.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # The domain self-checks. These are the gate that matters: they assert the
+      # money formatting, that the trial balance balances, that suspense equals
+      # the sum of open exceptions, and that the headline auto-match rate equals
+      # matched rows over total. If a fixture drifts, the build fails here.
+      - name: Domain checks
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build

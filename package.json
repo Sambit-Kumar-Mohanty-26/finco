@@ -1,0 +1,24 @@
+{
+  "name": "finco",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.29.2",
+  "scripts": {
+    "dev": "pnpm --filter @finco/web dev",
+    "build": "pnpm --filter @finco/web build",
+    "start": "pnpm --filter @finco/web start",
+    "lint": "pnpm --filter @finco/web lint",
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm -r --if-present check",
+    "e2e:shoot": "node apps/web/e2e/shoot.mjs",
+    "e2e:arc": "node apps/web/e2e/arc.mjs",
+    "logo:cutout": "node apps/web/e2e/cutout.mjs apps/web/e2e/shots/logo.png apps/web/public"
+  },
+  "engines": {
+    "node": ">=22.11",
+    "pnpm": ">=10"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
