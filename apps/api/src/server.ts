@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { env } from "./env.ts";
 import { log } from "./log.ts";
 import { health } from "./routes/health.ts";
+import { datasetsRouter } from "./routes/datasets.ts";
+import { runsRouter } from "./routes/runs.ts";
 
 const app = express();
 app.disable("x-powered-by");
@@ -43,9 +45,20 @@ app.use(
  * order wrong is silent: signatures simply never verify.
  */
 // app.use("/webhooks", express.raw({ type: "application/json" }), webhooks);
-app.use(express.json({ limit: "2mb" }));
+// 5,000 recon rows of JSON is a few MB, and the ingest cap is 50,000.
+app.use(express.json({ limit: "64mb" }));
+
+/**
+ * JSON has no bigint, and JSON.stringify THROWS on one rather than coercing —
+ * so without this every money field would 500 instead of rendering. Paise go
+ * over the wire as decimal strings and are converted back exactly once, by
+ * @finco/core on the other side.
+ */
+app.set("json replacer", (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
 
 app.use(health);
+app.use(datasetsRouter);
+app.use(runsRouter);
 
 app.use((_req, res) => res.status(404).json({ error: "not found" }));
 

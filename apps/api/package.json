@@ -9,7 +9,7 @@
     "start:worker": "tsx src/worker.ts",
     "cron:recon-pull": "tsx src/cron.ts",
     "typecheck": "tsc --noEmit",
-    "check": "node --experimental-strip-types src/db/bigint.check.mts && node --experimental-strip-types src/env.check.mts",
+    "check": "node --experimental-strip-types src/db/bigint.check.mts && node --experimental-strip-types src/env.check.mts && node --experimental-strip-types src/recon/recon.check.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

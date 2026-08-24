@@ -42,10 +42,10 @@ const TENS = [
 ];
 
 function under100(n: number): string {
-  if (n < 20) return ONES[n];
-  const t = TENS[Math.floor(n / 10)];
+  if (n < 20) return ONES[n] ?? "";
+  const t = TENS[Math.floor(n / 10)] ?? "";
   const o = n % 10;
-  return o === 0 ? t : `${t}-${ONES[o]}`;
+  return o === 0 ? t : `${t}-${ONES[o] ?? ""}`;
 }
 
 function under1000(n: number): string {

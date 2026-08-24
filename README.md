@@ -33,6 +33,8 @@ Run from the repository root.
 | `pnpm typecheck` | `tsc --noEmit` across every workspace |
 | `pnpm lint` | ESLint |
 | `pnpm check` | **Domain self-checks — see below** |
+| `pnpm db:generate` | Generate a migration from the Drizzle schema |
+| `pnpm db:migrate` | Apply migrations to Neon |
 | `pnpm e2e:shoot -- --url <url>` | Screenshot desktop + mobile, report horizontal overflow |
 | `pnpm e2e:arc -- --url <url>` | Verify scroll reveals fire on entry and nothing is left invisible |
 | `pnpm logo:cutout` | Re-cut `logo.png` from source art (background removal) |
@@ -48,6 +50,16 @@ does not tie is worse than no ledger.
 boundary, a value above 2^53 proving the bigint path, and spoken labels for
 screen readers (`"two lakh forty-one thousand eight hundred eighty rupees"`).
 
+**Domain** (`packages/core`) — `allocate()` never loses a paisa across 3,000
+generated splits, and the T+2 banking window respects weekends and RBI holidays.
+
+**Recon** (`apps/api`) — the int8 parser is registered; the direct connection URL
+derives correctly from `DATABASE_URL`; four bank narration formats parse and an
+unreadable one yields `null` rather than an invented UTR; I1 closes only when the
+fee is not double-subtracted; and a 500-row seeded scenario yields a **fixed**
+match count of 437/501 across T0, T1 and T2. If that number moves, the engine
+changed — the fixture is deterministic.
+
 **Ledger** (`apps/web`) — the trial balance balances, the journal balances, the
 9999 suspense balance equals the sum of the open exceptions *and* equals the
 run's unproven figure, stage counts are monotonic, the headline auto-match rate
@@ -62,8 +74,16 @@ contradicts itself.
 ```
 finco/
 ├── apps/
-│   └── web/                 Next.js 15, App Router — the marketing site
-│       ├── app/             routes, layout, globals.css, icons
+│   ├── api/                 Express 5 → Render (server + worker + cron)
+│   │   ├── src/server.ts    entrypoint 1: HTTP
+│   │   ├── src/worker.ts    entrypoint 2: queue consumer (P3)
+│   │   ├── src/cron.ts      entrypoint 3: scheduled pull (P8)
+│   │   ├── src/recon/       engine, narration parsing, seeded scenario
+│   │   ├── src/routes/      health, datasets, runs
+│   │   └── src/db/          drizzle schema, migrations, int8 parser
+│   └── web/                 Next.js 15, App Router → Vercel
+│       ├── app/(marketing)/ the landing page
+│       ├── app/(app)/       datasets, runs, status — same app, route group
 │       ├── components/
 │       │   ├── app/         AppFrame + product screens (the "screenshots")
 │       │   ├── hero/        scroll-pinned camera move
@@ -102,10 +122,19 @@ a screenshot.
 
 ## Deploying
 
-Vercel, with **Root Directory set to `apps/web`** and *Include files outside the
-Root Directory* enabled — this is a pnpm workspace, so the build needs the repo
-root to resolve `@finco/core`. No environment variables are required; the route
-is fully static.
+**Web → Vercel.** Root Directory `apps/web`, *Include files outside the Root
+Directory* enabled — this is a pnpm workspace, so the build needs the repo root
+to resolve `@finco/core`. Set `NEXT_PUBLIC_API_URL`; it is inlined at build
+time, so changing it requires a redeploy.
+
+**API → Render.** Leave Root Directory **empty**: `apps/api` depends on
+`packages/core`, and Render only redeploys on changes inside the root directory
+you set — so scoping it to `apps/api` would leave production running stale money
+code with nothing failing. Set `DATABASE_URL`, `ALLOWED_ORIGINS`, `NODE_ENV`.
+
+Both services and the database sit in **Singapore**. Neon's free plan has no
+India region and Render has none at all, so payment data does not stay in India
+under this topology — a documented trade, not a residency guarantee.
 
 ## Status
 
