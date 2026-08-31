@@ -1,34 +1,31 @@
 import { Router } from "express";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { db } from "../db/index.ts";
-import {
-  bankLines,
-  datasets,
-  erpInvoices,
-  matchLinks,
-  reconRows,
-  runs,
-  settlements,
-} from "../db/schema.ts";
+import { datasets, exceptions, matchLinks, runEvents, runs } from "../db/schema.ts";
+import { enqueue } from "../queue.ts";
+import { loadInputs, SEQ_FINISHED } from "../runner.ts";
 import { reconcile } from "../recon/engine.ts";
+import { buildScenario } from "../recon/scenario.ts";
+import { gate, score, THRESHOLDS, truthFor } from "../score.ts";
 import { inputHash } from "./datasets.ts";
 
 export const runsRouter = Router();
 
-/**
- * A synchronous run is capped deliberately.
- *
- * Render kills an HTTP request that runs too long, and a run dropped halfway
- * leaves match_links half written with no way to tell a partial run from a
- * finished one. Refuse above the cap with a clear message; P3 lifts it by
- * moving execution to the worker, which is the only correct fix.
- */
-const SYNC_ROW_CAP = 1000;
-
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });
 
-/** POST /v1/runs — body { datasetId }. Idempotent per (dataset, contents). */
+/**
+ * POST /v1/runs — body { datasetId }. Enqueues; the worker executes.
+ *
+ * 202 rather than 201: the run exists, the answer does not yet. The old
+ * synchronous path capped datasets at 1,000 rows because Render kills a long
+ * request and a half-written run is indistinguishable from a finished one.
+ * Moving execution to the worker is what lifts the cap — the request now does
+ * two inserts and returns.
+ *
+ * Idempotent on (dataset, contents): re-posting returns the existing run rather
+ * than starting a second close over the same numbers.
+ */
 runsRouter.post("/v1/runs", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
@@ -36,113 +33,27 @@ runsRouter.post("/v1/runs", async (req, res, next) => {
     const [ds] = await db.select().from(datasets).where(eq(datasets.id, datasetId));
     if (!ds) return res.status(404).json({ error: "no such dataset" });
 
-    const rowCount = ds.counts?.reconRows ?? 0;
-    if (rowCount > SYNC_ROW_CAP) {
-      return res.status(413).json({
-        error: `synchronous runs are capped at ${SYNC_ROW_CAP} rows; this dataset has ${rowCount}`,
-        hint: "P3 moves execution to the worker and lifts this cap",
-      });
-    }
-
     const hash = inputHash(ds.id, ds.counts ?? {});
     const [existing] = await db
       .select()
       .from(runs)
       .where(and(eq(runs.datasetId, ds.id), eq(runs.inputHash, hash)));
-    if (existing) return res.status(200).json({ ...existing, reused: true });
+    if (existing) {
+      // A run that died with its worker is requeued rather than left stuck.
+      if (existing.state.startsWith("RUNNING") || existing.state === "FAILED") {
+        await enqueue(db, existing.id, ds.id);
+      }
+      return res.status(200).json({ ...existing, reused: true });
+    }
 
     const [run] = await db
       .insert(runs)
-      .values({
-        datasetId: ds.id,
-        period: ds.period,
-        inputHash: hash,
-        state: "RUNNING",
-        startedAt: new Date(),
-      })
+      .values({ datasetId: ds.id, period: ds.period, inputHash: hash, state: "QUEUED" })
       .returning();
     if (!run) return res.status(500).json({ error: "run insert returned nothing" });
 
-    const [setls, rows, banks, invoices] = await Promise.all([
-      db.select().from(settlements).where(eq(settlements.datasetId, ds.id)).orderBy(asc(settlements.ref)),
-      db.select().from(reconRows).where(eq(reconRows.datasetId, ds.id)).orderBy(asc(reconRows.entityId)),
-      db.select().from(bankLines).where(eq(bankLines.datasetId, ds.id)).orderBy(asc(bankLines.ref)),
-      db.select().from(erpInvoices).where(eq(erpInvoices.datasetId, ds.id)),
-    ]);
-
-    const result = reconcile({
-      settlements: setls.map((s) => ({
-        ref: s.ref,
-        utr: s.utr,
-        amountPaise: s.amountPaise,
-        settledOn: s.settledOn,
-        onHold: s.onHold,
-      })),
-      reconRows: rows.map((r) => ({
-        entityId: r.entityId,
-        settlementRef: r.settlementRef,
-        type: r.type,
-        orderId: r.orderId,
-        creditPaise: r.creditPaise,
-        debitPaise: r.debitPaise,
-      })),
-      bankLines: banks.map((b) => ({
-        ref: b.ref,
-        valueDate: b.valueDate,
-        creditPaise: b.creditPaise,
-        chargesPaise: b.chargesPaise,
-        narration: b.narration,
-      })),
-      erpInvoices: invoices.map((i) => ({
-        orderReceipt: i.orderReceipt,
-        amountPaise: i.amountPaise,
-      })),
-    });
-
-    if (result.links.length > 0) {
-      const values = result.links.map((l) => ({
-        runId: run.id,
-        datasetId: ds.id,
-        tier: l.tier,
-        verdict: l.verdict,
-        leftType: l.leftType,
-        leftRef: l.leftRef,
-        rightType: l.rightType,
-        rightRef: l.rightRef,
-        amountPaise: l.amountPaise,
-        deltaPaise: l.deltaPaise,
-        reason: l.reason,
-      }));
-      for (let i = 0; i < values.length; i += 1000) {
-        await db.insert(matchLinks).values(values.slice(i, i + 1000));
-      }
-    }
-
-    const [done] = await db
-      .update(runs)
-      .set({
-        state: "SCORED",
-        totalRows: BigInt(result.totalRows),
-        matchedRows: BigInt(result.matchedRows),
-        unprovenPaise: result.unprovenPaise,
-        // Settlement detail lives in the run so /runs/:id is one read, and so
-        // the figures a page shows cannot drift from the run that produced them.
-        stages: {
-          tiers: result.stages,
-          autoMatchPct: result.autoMatchPct,
-          settlements: result.settlements.map((s) => ({
-            ...s,
-            amountPaise: s.amountPaise.toString(),
-            deltaPaise: s.deltaPaise.toString(),
-          })),
-        },
-        finishedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(runs.id, run.id))
-      .returning();
-
-    res.status(201).json(done ?? { id: run.id, state: "SCORED" });
+    await enqueue(db, run.id, ds.id);
+    res.status(202).json({ ...run, stream: `/v1/runs/${run.id}/stream` });
   } catch (e) {
     next(e);
   }
@@ -151,12 +62,80 @@ runsRouter.post("/v1/runs", async (req, res, next) => {
 runsRouter.get("/v1/runs", async (_req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const rows = await db
-      .select()
-      .from(runs)
-      .orderBy(sql`${runs.createdAt} desc`)
-      .limit(50);
+    const rows = await db.select().from(runs).orderBy(sql`${runs.createdAt} desc`).limit(50);
     res.json({ runs: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /v1/runs/:id/stream — server-sent events.
+ *
+ * SSE rather than a websocket: progress is one-directional, and EventSource
+ * reconnects and replays Last-Event-ID on its own, which is most of what a
+ * websocket would have to be taught by hand.
+ *
+ * Events are read from the run_events TABLE rather than pushed from the worker,
+ * because the worker is a different process on a different machine and Neon's
+ * HTTP driver has no LISTEN. The table is also what makes a late subscriber
+ * work: connecting after the run finished replays every stage from seq 0 and
+ * ends, so a finished run renders through exactly the same code path as a live
+ * one. That is the property the phase plan actually asks for.
+ */
+runsRouter.get("/v1/runs/:id/stream", async (req, res, next) => {
+  if (!db) return needDb(res);
+  const runId = req.params.id;
+  try {
+    const [run] = await db.select().from(runs).where(eq(runs.id, runId));
+    if (!run) return res.status(404).json({ error: "no such run" });
+
+    // A reconnecting EventSource sends the last id it saw; anything at or below
+    // it has already been rendered and must not be replayed.
+    const lastHeader = req.headers["last-event-id"];
+    const fromQuery = Number(req.query.lastEventId ?? NaN);
+    let cursor = Number(Array.isArray(lastHeader) ? lastHeader[0] : lastHeader);
+    if (!Number.isFinite(cursor)) cursor = Number.isFinite(fromQuery) ? fromQuery : 0;
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      // Render and most proxies buffer responses by default, which turns a
+      // live stream into one delivery at the end.
+      "X-Accel-Buffering": "no",
+    });
+    res.write(`retry: 2000\n\n`);
+
+    let closed = false;
+    req.on("close", () => {
+      closed = true;
+    });
+
+    const send = (seq: number, type: string, data: unknown) =>
+      res.write(`id: ${seq}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+
+    // ponytail: 500ms poll. A close emits seven events over a minute or two, so
+    // LISTEN on the direct connection would be machinery for no user-visible gain.
+    const deadline = Date.now() + 10 * 60_000;
+    while (!closed && Date.now() < deadline) {
+      const events = await db
+        .select()
+        .from(runEvents)
+        .where(and(eq(runEvents.runId, runId), gt(runEvents.seq, cursor)))
+        .orderBy(asc(runEvents.seq));
+
+      for (const e of events) {
+        send(e.seq, e.type, e.payload);
+        cursor = e.seq;
+      }
+      if (cursor >= SEQ_FINISHED) break;
+      // A comment line keeps proxies and the browser from timing the idle
+      // connection out while the worker is still on its first tier.
+      res.write(": keep-alive\n\n");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    res.end();
   } catch (e) {
     next(e);
   }
@@ -167,13 +146,103 @@ runsRouter.get("/v1/runs/:id", async (req, res, next) => {
   try {
     const [run] = await db.select().from(runs).where(eq(runs.id, req.params.id));
     if (!run) return res.status(404).json({ error: "no such run" });
-    const links = await db
-      .select()
-      .from(matchLinks)
-      .where(eq(matchLinks.runId, run.id))
-      .orderBy(asc(matchLinks.tier), asc(matchLinks.leftRef))
-      .limit(500);
-    res.json({ ...run, links });
+    const [links, events, [counts]] = await Promise.all([
+      db
+        .select()
+        .from(matchLinks)
+        .where(eq(matchLinks.runId, run.id))
+        .orderBy(asc(matchLinks.tier), asc(matchLinks.leftRef))
+        .limit(500),
+      db.select().from(runEvents).where(eq(runEvents.runId, run.id)).orderBy(asc(runEvents.seq)),
+      db
+        .select({
+          open: sql<number>`count(*) filter (where ${exceptions.status} = 'OPEN')::int`,
+          total: sql<number>`count(*)::int`,
+        })
+        .from(exceptions)
+        .where(eq(exceptions.runId, run.id)),
+    ]);
+    res.json({ ...run, links, events, exceptions: counts ?? { open: 0, total: 0 } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /v1/runs/:id/scorecard
+ *
+ * The run is REPLAYED from its stored inputs rather than reconstructed from
+ * match_links, and the truth is regenerated from the dataset's seed. Two
+ * consequences, both deliberate: the answers never sit anywhere the engine can
+ * read them, and a scorecard that disagrees with the recorded run is itself the
+ * signal that the engine stopped being deterministic.
+ *
+ * On an uploaded dataset there is no seed and therefore no truth, and the
+ * scorecard says precision is not measurable instead of printing 1.000.
+ */
+runsRouter.get("/v1/runs/:id/scorecard", async (req, res, next) => {
+  if (!db) return needDb(res);
+  try {
+    const [run] = await db.select().from(runs).where(eq(runs.id, req.params.id));
+    if (!run?.datasetId) return res.status(404).json({ error: "no such run" });
+    const [ds] = await db.select().from(datasets).where(eq(datasets.id, run.datasetId));
+
+    const input = await loadInputs(db, run.datasetId);
+    const replay = reconcile(input);
+    const card = score(input, replay, truthFor(ds?.seedSpec));
+
+    res.json({
+      ...card,
+      runId: run.id,
+      period: run.period,
+      thresholds: THRESHOLDS,
+      failures: gate(card),
+      // If the replay disagrees with what was committed, every number above is
+      // describing a different run from the one in the ledger. Say so loudly.
+      replayMatchesRun:
+        BigInt(replay.matchedRows) === run.matchedRows && BigInt(replay.totalRows) === run.totalRows,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /v1/eval/scale — the scale curve.
+ *
+ * Quality is a property of the ENGINE, not of one run, so this is not keyed on
+ * a run id: it rebuilds the synthetic scenario at four sizes and scores each.
+ * The point of the largest sample is that precision must not decay with volume
+ * — a matcher that only works on a small file is a demo.
+ *
+ * Computed once per process rather than cached in a table. The engine is pure,
+ * the whole curve is under a second, and a stored curve is a number that can
+ * silently describe an older engine than the one running.
+ */
+let curveCache: unknown = null;
+
+runsRouter.get("/v1/eval/scale", (_req, res, next) => {
+  try {
+    if (!curveCache) {
+      curveCache = [50, 500, 5000, 50000].map((rows) => {
+        const s = buildScenario(rows);
+        const t0 = performance.now();
+        const r = reconcile(s);
+        const ms = Math.round(performance.now() - t0);
+        const card = score(s, r, s.truth);
+        return {
+          rows: card.totalRows,
+          ms,
+          autoMatchPct: card.autoMatchPct,
+          precision: card.precision,
+          recall: card.recall,
+          exceptionF1: card.exceptionF1,
+          valueCoveragePct: card.valueCoveragePct,
+          passes: gate(card).length === 0,
+        };
+      });
+    }
+    res.set("Cache-Control", "public, max-age=600").json({ curve: curveCache, thresholds: THRESHOLDS });
   } catch (e) {
     next(e);
   }

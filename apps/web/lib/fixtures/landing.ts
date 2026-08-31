@@ -42,7 +42,7 @@ export const candidates = [
 export const verdict = {
   state: "escalate" as const,
   reason: "two distinct subsets hit the target; uniqueness failed",
-  agentModel: "claude-sonnet-4-6",
+  agentModel: "gemini-2.5-pro",
   agentClaim: "setl_Nx1 + setl_Nx4, on UTR prefix match",
 };
 

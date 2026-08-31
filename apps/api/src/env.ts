@@ -42,6 +42,13 @@ export const env = {
   databaseUrlDirect:
     process.env.DATABASE_URL_UNPOOLED ?? direct(process.env.DATABASE_URL ?? null),
   allowedOrigins: list(process.env.ALLOWED_ORIGINS),
+  // Optional on purpose: T5 is the last tier and the only one that costs money.
+  // Without a key the run still closes — five deterministic tiers and a smaller
+  // auto-match rate — which is what keeps CI and local dev free and offline.
+  geminiApiKey: process.env.GEMINI_API_KEY ?? null,
+  // Signs session cookies. Absent in dev, where a random per-boot value is fine
+  // because logging in again is cheaper than a secret nobody rotated.
+  sessionSecret: process.env.SESSION_SECRET ?? null,
   // Render, Vercel and GitHub Actions each expose the commit under a different name
   gitSha:
     process.env.RENDER_GIT_COMMIT ??

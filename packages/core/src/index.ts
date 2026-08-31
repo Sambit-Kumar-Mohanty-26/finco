@@ -21,3 +21,33 @@ export {
   bankingWindow,
   bankingDaysBetween,
 } from "./banking.ts";
+
+export {
+  countSubsets,
+  findSubset,
+  solveSubset,
+  SUBSET_CANDIDATE_CAP,
+  type SubsetOutcome,
+} from "./subset.ts";
+
+export {
+  ACCOUNTS,
+  SUSPENSE,
+  accountName,
+  isAccount,
+  checkBalanced,
+  nonZero,
+  type Account,
+  type AccountType,
+  type JournalLine,
+} from "./accounts.ts";
+
+export {
+  EXCEPTION_SPECS,
+  EXCEPTION_CODES,
+  isExceptionCode,
+  coerceCode,
+  type ExceptionCode,
+  type ExceptionSpec,
+  type Owner,
+} from "./exceptions.ts";

@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "check:ledger": "node --experimental-strip-types lib/fixtures/ledger.check.mts",
-    "check": "node --experimental-strip-types lib/fixtures/ledger.check.mts",
+    "check:review": "node --experimental-strip-types lib/review.check.mts",
+    "check": "pnpm check:ledger && pnpm check:review",
     "lint": "eslint ."
   },
   "dependencies": {

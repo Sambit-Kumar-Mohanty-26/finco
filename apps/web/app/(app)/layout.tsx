@@ -1,6 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Wrap } from "@/components/layout/Wrap";
+import { SessionBar } from "@/components/app/SessionBar";
+
+const NAV = [
+  { href: "/datasets", label: "Datasets" },
+  { href: "/runs", label: "Runs" },
+  { href: "/exceptions", label: "Exceptions" },
+  { href: "/ledger", label: "Ledger" },
+  { href: "/status", label: "Status" },
+];
 
 /**
  * The dashboard shell. Same app as the marketing site, separate route group —
@@ -16,16 +25,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             FinCo
           </Link>
           <nav className="flex items-center gap-5 font-mono text-[11px] tracking-[0.04em] text-ink-hush">
-            <Link href="/datasets" className="hover:text-ink">
-              Datasets
-            </Link>
-            <Link href="/runs" className="hover:text-ink">
-              Runs
-            </Link>
-            <Link href="/status" className="hover:text-ink">
-              Status
-            </Link>
+            {NAV.map((n) => (
+              <Link key={n.href} href={n.href} className="hover:text-ink">
+                {n.label}
+              </Link>
+            ))}
           </nav>
+          <SessionBar />
         </Wrap>
       </header>
       {children}

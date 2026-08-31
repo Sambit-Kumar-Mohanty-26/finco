@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { Wrap } from "@/components/layout/Wrap";
 import { Money } from "@/components/money/Money";
 import { DeltaChip, TierBadge, VerdictBadge } from "@/components/app/Badges";
+import { RunTimeline } from "@/components/app/RunTimeline";
+import { AgentPanel } from "@/components/app/AgentPanel";
 import { apiGet, isErr, paiseOf, type Run } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +40,22 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         <h1 className="mt-4 font-display text-[clamp(26px,3vw,38px)] leading-[1.1] tracking-[-0.02em]">
           Run {run.id.slice(0, 8)}
         </h1>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px]">
+          <Link href={`/runs/${run.id}/scorecard`} className="text-ink-hush hover:text-ink">
+            Scorecard →
+          </Link>
+          <Link href={`/exceptions?runId=${run.id}`} className="text-ink-hush hover:text-ink">
+            Exceptions{run.exceptions ? ` (${run.exceptions.open} open)` : ""} →
+          </Link>
+          <Link href={`/ledger?runId=${run.id}`} className="text-ink-hush hover:text-ink">
+            Trial balance →
+          </Link>
+        </div>
+
+        {/* live progress — and the same six rows once it has finished */}
+        <div className="mt-8">
+          <RunTimeline run={run} />
+        </div>
 
         {/* headline counters */}
         <div className="mt-8 grid grid-cols-2 overflow-hidden rounded-[12px] border border-line-light bg-white md:grid-cols-4">
@@ -158,6 +176,18 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             ) : null}
           </p>
         )}
+
+        {/* the model tier, and the verifier's answer to it */}
+        <h2 className="mt-14 font-mono text-[11px] font-semibold tracking-[0.14em] text-ink-hush uppercase">
+          Tier 5 · what the model proposed
+        </h2>
+        <p className="mt-2 max-w-[70ch] font-mono text-[11px] leading-relaxed text-ink-hush">
+          The model reads only what the five deterministic tiers could not explain, and it cannot
+          post. Every claim below is shown beside the verifier&rsquo;s verdict on it.
+        </p>
+        <div className="mt-4">
+          <AgentPanel judged={run.stages?.judged ?? []} agent={run.stages?.agent} />
+        </div>
 
         {/* the links themselves */}
         {run.links && run.links.length > 0 ? (

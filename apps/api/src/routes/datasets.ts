@@ -38,7 +38,7 @@ datasetsRouter.post("/v1/datasets", async (req, res, next) => {
   try {
     const body = req.body ?? {};
     const size = Number(body.generate ?? 0);
-    const bundle = size > 0 ? buildScenario(size) : body;
+    const bundle = size > 0 ? buildScenario(size, Number(body.seed ?? 20260824)) : body;
 
     if (!Array.isArray(bundle.settlements) || !Array.isArray(bundle.reconRows)) {
       return res.status(400).json({
@@ -63,6 +63,7 @@ datasetsRouter.post("/v1/datasets", async (req, res, next) => {
         period: body.period ?? "2026-06",
         source: size > 0 ? "seed" : "upload",
         counts,
+        seedSpec: size > 0 ? { size, seed: Number(body.seed ?? 20260824) } : null,
       })
       .returning();
     if (!ds) return res.status(500).json({ error: "dataset insert returned nothing" });
@@ -100,6 +101,8 @@ datasetsRouter.post("/v1/datasets", async (req, res, next) => {
         taxPaise: P(r.taxPaise ?? 0),
         disputeId: r.disputeId == null ? null : String(r.disputeId),
         description: r.description == null ? null : String(r.description),
+        currency: String(r.currency ?? "INR"),
+        capturedOn: r.capturedOn == null ? null : String(r.capturedOn),
       })),
     );
 

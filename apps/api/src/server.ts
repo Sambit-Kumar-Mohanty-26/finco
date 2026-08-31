@@ -7,6 +7,9 @@ import { log } from "./log.ts";
 import { health } from "./routes/health.ts";
 import { datasetsRouter } from "./routes/datasets.ts";
 import { runsRouter } from "./routes/runs.ts";
+import { authRouter } from "./routes/auth.ts";
+import { exceptionsRouter } from "./routes/exceptions.ts";
+import { ledgerRouter } from "./routes/ledger.ts";
 
 const app = express();
 app.disable("x-powered-by");
@@ -57,8 +60,11 @@ app.use(express.json({ limit: "64mb" }));
 app.set("json replacer", (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
 
 app.use(health);
+app.use(authRouter);
 app.use(datasetsRouter);
 app.use(runsRouter);
+app.use(exceptionsRouter);
+app.use(ledgerRouter);
 
 app.use((_req, res) => res.status(404).json({ error: "not found" }));
 
