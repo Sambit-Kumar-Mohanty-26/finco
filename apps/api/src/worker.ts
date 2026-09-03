@@ -1,3 +1,4 @@
+import { Sentry } from "./instrument.ts";
 import { randomUUID } from "node:crypto";
 import { db } from "./db/index.ts";
 import { log } from "./log.ts";
@@ -31,18 +32,26 @@ async function tick(): Promise<boolean> {
   if (!job) return false;
 
   log.info({ jobId: job.id, runId: job.runId, attempt: job.attempts, from: job.stage }, "job claimed");
-  try {
-    await executeRun(database, job.runId, job.datasetId, {
-      onStage: (stage) => checkpoint(database, job.id, stage),
-    });
-    await finish(database, job.id);
-  } catch (err) {
-    log.error({ err, jobId: job.id }, "job failed");
-    await fail(database, job, err);
-    // Only tell the UI the run is dead once the queue has actually given up.
-    // Saying so on a retryable failure would show a red run that then succeeds.
-    if (job.attempts >= 3) await failRun(database, job.runId, err);
-  }
+  // An isolation scope per job, so the run id is on the error itself rather
+  // than on whatever the worker happened to be doing. Without it every close
+  // shares one global scope and the tags of the last job win.
+  await Sentry.withIsolationScope(async (scope) => {
+    scope.setTag("runId", job.runId);
+    scope.setTag("jobId", job.id);
+    try {
+      await executeRun(database, job.runId, job.datasetId, {
+        onStage: (stage) => checkpoint(database, job.id, stage),
+      });
+      await finish(database, job.id);
+    } catch (err) {
+      Sentry.captureException(err);
+      log.error({ err, jobId: job.id }, "job failed");
+      await fail(database, job, err);
+      // Only tell the UI the run is dead once the queue has actually given up.
+      // Saying so on a retryable failure would show a red run that then succeeds.
+      if (job.attempts >= 3) await failRun(database, job.runId, err);
+    }
+  });
   return true;
 }
 

@@ -5,13 +5,16 @@ import { Money } from "@/components/money/Money";
 import { DeltaChip, TierBadge, VerdictBadge } from "@/components/app/Badges";
 import { RunTimeline } from "@/components/app/RunTimeline";
 import { AgentPanel } from "@/components/app/AgentPanel";
-import { apiGet, isErr, paiseOf, type Run } from "@/lib/api";
+import { apiGet, isErr, paiseOf, type Agreement, type Run } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const run = await apiGet<Run>(`/v1/runs/${id}`);
+  const [run, agreement] = await Promise.all([
+    apiGet<Run>(`/v1/runs/${id}`),
+    apiGet<Agreement>(`/v1/runs/${id}/agreement`),
+  ]);
   if (isErr(run)) {
     if (run.error.includes("404")) notFound();
     return (
@@ -220,6 +223,51 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                 </tbody>
               </table>
             </div>
+          </>
+        ) : null}
+        {/* --- shadow mode: did the humans agree? -------------------------- */}
+        {!isErr(agreement) ? (
+          <>
+            <h2 className="mt-14 font-mono text-[11px] font-semibold tracking-[0.14em] text-ink-hush uppercase">
+              Agreement
+            </h2>
+            <p className="mt-3 max-w-[64ch] text-[14px] leading-relaxed text-ink-hush">
+              {agreement.policy?.posted === false
+                ? "This run posted nothing — it was in observe mode, or the kill switch was on. The only evidence its judgement is sound is whether the people working the queue afterwards reached the same conclusions."
+                : "Where a person later worked an exception, did they reach the same conclusion the engine did?"}
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-px rounded-[12px] border border-line-light bg-line-light sm:grid-cols-4">
+              <div className="bg-white">
+                <Stat
+                  label="agreement"
+                  value={agreement.agreementPct === null ? "—" : `${agreement.agreementPct}%`}
+                  tone={agreement.wrong === 0 ? "signal" : undefined}
+                />
+              </div>
+              <div className="bg-white">
+                <Stat label="decided" value={String(agreement.decided)} />
+              </div>
+              <div className="bg-white">
+                <Stat label="engine wrong" value={String(agreement.wrong)} />
+              </div>
+              <div className="bg-white">
+                <Stat label="engine timid" value={String(agreement.timid)} />
+              </div>
+            </div>
+            <p
+              className={`mt-3 max-w-[68ch] text-[13.5px] leading-relaxed ${
+                agreement.wrong > 0 ? "text-refused" : "text-ink-hush"
+              }`}
+            >
+              {agreement.note}
+              {agreement.wrong > 0 ? (
+                <>
+                  {" "}
+                  <Money paise={paiseOf(agreement.valueWrongPaise)} tone="refused" className="text-[12.5px]" /> at
+                  stake.
+                </>
+              ) : null}
+            </p>
           </>
         ) : null}
       </Wrap>

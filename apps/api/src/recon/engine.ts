@@ -191,6 +191,20 @@ export type ReconcileInput = {
   period?: string;
   /** T5 claims, already fetched and cached by the caller. */
   proposals?: Proposal[];
+  /**
+   * The tenant's posted policy, read from the database by the caller.
+   *
+   * Passed in as plain values rather than imported, because the engine is pure
+   * and has to stay runnable from a check with no database behind it. Omitted
+   * means DEFAULT_POLICY, which is what every check and every replay uses.
+   */
+  policy?: EnginePolicy;
+};
+
+export type EnginePolicy = {
+  autonomyCapPaise: bigint;
+  autonomyMode: "observe" | "assist" | "auto";
+  killSwitch: boolean;
 };
 
 const sum = (xs: bigint[]) => xs.reduce((a, b) => a + b, 0n);
@@ -465,15 +479,32 @@ function refuse(state: State, p: Proposal, tier: Tier, v: VerifierVerdict) {
  */
 export const AUTONOMY_CAP_PAISE = MATERIALITY_PAISE;
 
+/** What a tenant that has never opened the policy page gets. */
+export const DEFAULT_POLICY: EnginePolicy = {
+  autonomyCapPaise: AUTONOMY_CAP_PAISE,
+  autonomyMode: "assist",
+  killSwitch: false,
+};
+
 /** Route a proposal through the gate and record whichever way it went. */
 function judge(state: State, p: Proposal, tier: Tier): VerifierVerdict {
   let v = verify(state, p);
+  const policy = state.input.policy ?? DEFAULT_POLICY;
   const credit = state.bankByRef.get(p.bankRef)?.creditPaise ?? 0n;
-  if (tier === "T5" && v.verdict === "ACCEPT" && credit >= AUTONOMY_CAP_PAISE) {
+  if (v.verdict === "ACCEPT" && policy.killSwitch) {
+    // The switch is blunt on purpose. It outranks a proven claim under the cap
+    // at every tier, deterministic ones included — a kill switch with an
+    // exception list is a setting, not a switch.
     v = {
       ...v,
       verdict: "ESCALATE",
-      reason: `${v.reason} — proven, but ${credit} paise is at or above the ${AUTONOMY_CAP_PAISE} paise autonomy cap, so a person signs`,
+      reason: `${v.reason} — the kill switch is on, so every outcome routes to review`,
+    };
+  } else if (tier === "T5" && v.verdict === "ACCEPT" && credit >= policy.autonomyCapPaise) {
+    v = {
+      ...v,
+      verdict: "ESCALATE",
+      reason: `${v.reason} — proven, but ${credit} paise is at or above the ${policy.autonomyCapPaise} paise autonomy cap, so a person signs`,
     };
   }
   state.judged.push({ proposal: p, verdict: v });

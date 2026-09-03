@@ -46,9 +46,20 @@ export const env = {
   // Without a key the run still closes — five deterministic tiers and a smaller
   // auto-match rate — which is what keeps CI and local dev free and offline.
   geminiApiKey: process.env.GEMINI_API_KEY ?? null,
-  // Signs session cookies. Absent in dev, where a random per-boot value is fine
-  // because logging in again is cheaper than a secret nobody rotated.
-  sessionSecret: process.env.SESSION_SECRET ?? null,
+  // Optional too: without it the webhook route answers 503 rather than
+  // accepting events it cannot verify. The nightly cron pull is the source of
+  // truth either way, so an unset secret costs latency, not correctness.
+  razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? null,
+  // The nightly pull's credentials. Read-only API keys are enough — nothing in
+  // this codebase ever writes to Razorpay.
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? null,
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? null,
+  // Any incoming-webhook URL that accepts { text } — Slack, Discord, Teams.
+  // Without it alerts are still logged; they are just not pushed anywhere.
+  alertWebhookUrl: process.env.ALERT_WEBHOOK_URL ?? null,
+  // No DSN, no Sentry, no network calls. That is how CI and local dev stay
+  // offline; pino still records every error either way.
+  sentryDsn: process.env.SENTRY_DSN ?? null,
   // Render, Vercel and GitHub Actions each expose the commit under a different name
   gitSha:
     process.env.RENDER_GIT_COMMIT ??

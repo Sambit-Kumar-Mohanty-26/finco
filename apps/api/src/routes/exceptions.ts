@@ -6,6 +6,7 @@ import { exceptions, journalEntries, matchLinks, runs } from "../db/schema.ts";
 import { attachActor, requireRole } from "../auth.ts";
 import { loadInputs, postEntry } from "../runner.ts";
 import { verifyOne, type Proposal } from "../recon/engine.ts";
+import { scoped } from "../policy.ts";
 
 export const exceptionsRouter = Router();
 exceptionsRouter.use(attachActor);
@@ -271,7 +272,7 @@ exceptionsRouter.post("/v1/exceptions/:id/reopen", requireRole("preparer"), asyn
     const [entry] = await db
       .select()
       .from(journalEntries)
-      .where(and(eq(journalEntries.tenantId, actor.tenantId), eq(journalEntries.sourceRef, `resolve:${ex.id}`)));
+      .where(scoped(journalEntries, actor.tenantId, eq(journalEntries.sourceRef, `resolve:${ex.id}`)));
 
     if (entry) {
       const lines = await db.execute<{ account: string; debit_paise: bigint; credit_paise: bigint }>(
@@ -297,7 +298,7 @@ exceptionsRouter.post("/v1/exceptions/:id/reopen", requireRole("preparer"), asyn
       await db
         .update(journalEntries)
         .set({ reversalOf: entry.id })
-        .where(and(eq(journalEntries.tenantId, actor.tenantId), eq(journalEntries.sourceRef, `reverse:${ex.id}`)));
+        .where(scoped(journalEntries, actor.tenantId, eq(journalEntries.sourceRef, `reverse:${ex.id}`)));
     }
 
     const [updated] = await db

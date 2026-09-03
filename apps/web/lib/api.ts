@@ -248,3 +248,120 @@ export async function apiSend<T>(
     return { ok: false, status: 0, error: (e as Error).message, detail: {} };
   }
 }
+
+// --- P7: cash ------------------------------------------------------------------
+
+/** Money is a decimal string on the wire; every *Paise field below is one. */
+export type ForecastPoint = {
+  date: string;
+  grossPaise: string;
+  p10Paise: string;
+  p50Paise: string;
+  p90Paise: string;
+  cumP10Paise: string;
+  cumP50Paise: string;
+  cumP90Paise: string;
+  bankingDay: boolean;
+};
+
+export type AgeingBucket = {
+  key: string;
+  label: string;
+  fromDays: number;
+  toDays: number | null;
+  items: number;
+  valuePaise: string;
+  overdue: boolean;
+};
+
+export type FloorVerdict = {
+  floorPaise: string;
+  expectedPaise: string;
+  breach: boolean;
+  shortfallPaise: string;
+  clearsOn: string | null;
+};
+
+export type Propensity = { rate: number; low: number; high: number; n: number };
+
+export type CashForecast = {
+  datasetId: string;
+  datasetName: string;
+  period: string;
+  asOf: string;
+  days: number;
+  curve: ForecastPoint[];
+  buckets: AgeingBucket[];
+  floor: FloorVerdict;
+  propensity: { domestic: Propensity; international: Propensity };
+  unprovenPaise: string;
+  cachedAgeMs: number;
+  stale: boolean;
+};
+
+// --- P8: governance ------------------------------------------------------------
+
+export type EffectivePolicy = {
+  tenantId: string;
+  autonomyCapPaise: string;
+  materialityPaise: string;
+  cashFloorPaise: string;
+  suspenseCeilingPaise: string;
+  autonomyMode: "observe" | "assist" | "auto";
+  killSwitch: boolean;
+  killReason: string;
+  updatedAt: string | null;
+  modes?: readonly string[];
+};
+
+export type Connection = {
+  key: string;
+  label: string;
+  status: "OK" | "NO DATA" | "NOT CONFIGURED";
+  rows: number;
+  newest: string | null;
+  signatureFailures?: number;
+};
+
+export type Connections = {
+  sources: Connection[];
+  orderReceiptCoverage: { pct: number | null; rowsWithReceipt: number; rowsTotal: number; fix: string };
+};
+
+export type AuditEntry = {
+  seq: number;
+  at: string;
+  actorEmail: string;
+  action: string;
+  subjectType: string;
+  subjectRef: string;
+  detail: Record<string, unknown>;
+  hash: string;
+};
+
+export type CheckItem = { key: string; label: string; why: string; pass: boolean; detail: string };
+
+export type PeriodDetail = {
+  period: string;
+  state: "OPEN" | "LOCKED";
+  lockedAt: string | null;
+  lockedBy: string | null;
+  items: CheckItem[];
+  ready: boolean;
+  runId: string | null;
+};
+
+export type Agreement = {
+  runId: string;
+  period: string;
+  agreementPct: number | null;
+  decided: number;
+  open: number;
+  agreedAuto: number;
+  agreedEscalate: number;
+  wrong: number;
+  timid: number;
+  valueWrongPaise: string;
+  policy: { autonomyMode?: string; autonomyCapPaise?: string; killSwitch?: boolean; posted?: boolean } | null;
+  note: string;
+};

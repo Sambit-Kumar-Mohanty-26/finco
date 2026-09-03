@@ -33,7 +33,7 @@ export default async function DatasetsPage() {
         ) : res.datasets.length === 0 ? (
           <Empty
             title="No datasets yet."
-            detail="Seed a scenario to get started — 500 rows runs synchronously, 5,000 needs P3."
+            detail="Seed a scenario to get started. Every size is reconciled by the worker, so the browser never waits on a close."
           />
         ) : (
           <div className="mt-12 overflow-hidden rounded-[12px] border border-line-light bg-white">

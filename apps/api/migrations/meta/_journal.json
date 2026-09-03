@@ -22,6 +22,20 @@
       "when": 1788152141641,
       "tag": "0002_worried_marvex",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788177404314,
+      "tag": "0003_next_runaways",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788178717228,
+      "tag": "0004_neat_stone_men",
+      "breakpoints": true
     }
   ]
 }

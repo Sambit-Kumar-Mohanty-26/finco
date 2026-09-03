@@ -9,7 +9,7 @@
     "start:worker": "tsx src/worker.ts",
     "cron:recon-pull": "tsx src/cron.ts",
     "typecheck": "tsc --noEmit",
-    "check": "node --experimental-strip-types src/db/bigint.check.mts && node --experimental-strip-types src/env.check.mts && node --experimental-strip-types src/recon/recon.check.mts && node --experimental-strip-types src/ledger.check.mts && node --experimental-strip-types src/auth.check.mts && node --experimental-strip-types src/agent/agent.check.mts && node --experimental-strip-types src/score.check.mts",
+    "check": "node --experimental-strip-types src/db/bigint.check.mts && node --experimental-strip-types src/env.check.mts && node --experimental-strip-types src/recon/recon.check.mts && node --experimental-strip-types src/ledger.check.mts && node --experimental-strip-types src/auth.check.mts && node --experimental-strip-types src/agent/agent.check.mts && node --experimental-strip-types src/score.check.mts && node --experimental-strip-types src/policy.check.mts",
     "eval": "node --experimental-strip-types src/eval.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
@@ -18,6 +18,7 @@
     "@finco/core": "workspace:*",
     "@google/genai": "^2.19.0",
     "@neondatabase/serverless": "^0.10.4",
+    "@sentry/node": "^10.72.0",
     "cors": "^2.8.5",
     "drizzle-orm": "^0.38.3",
     "express": "^5.0.1",

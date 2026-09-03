@@ -14,6 +14,8 @@ import {
 import { log } from "./log.ts";
 import { assertBalanced, postingsFor, type Posting } from "./ledger.ts";
 import { proposeWithModel } from "./agent/propose.ts";
+import { readPolicy } from "./policy.ts";
+import { alert } from "./alerts.ts";
 import {
   reconcileStaged,
   TIERS,
@@ -196,7 +198,25 @@ export async function executeRun(
   // never called twice for the same prompt.
   const agent = await proposeWithModel(database, runId, input);
 
-  const it = reconcileStaged({ ...input, proposals: agent.proposals });
+  /**
+   * Autonomy comes from the database, not from a constant in the engine.
+   *
+   * Read ONCE per run and then passed through as data, so every tier in this
+   * run is judged by the same policy. Re-reading per tier would let a change
+   * halfway through a close produce a run that was half automatic — the worst
+   * of both, and impossible to explain afterwards.
+   */
+  const policy = await readPolicy(run.tenantId);
+
+  const it = reconcileStaged({
+    ...input,
+    proposals: agent.proposals,
+    policy: {
+      autonomyCapPaise: policy.autonomyCapPaise,
+      autonomyMode: policy.autonomyMode,
+      killSwitch: policy.killSwitch,
+    },
+  });
   let step = it.next();
   let index = 0;
   while (!step.done) {
@@ -269,8 +289,24 @@ export async function executeRun(
     entryDate: `${input.period ?? run.period}-01`,
   });
   assertBalanced(postings); // nothing partial posts: the whole batch or none
-  for (const p of postings) {
-    await postEntry(database, { tenantId: run.tenantId, runId, period: run.period }, p);
+
+  /**
+   * Observe mode reconciles everything and posts nothing.
+   *
+   * The postings are still built and still balance-checked, because the point
+   * of observe is to prove the close would have been right — a mode that skips
+   * the work proves nothing. Only the write is skipped, and the run says so.
+   */
+  const posting = policy.autonomyMode !== "observe" && !policy.killSwitch;
+  if (posting) {
+    for (const p of postings) {
+      await postEntry(database, { tenantId: run.tenantId, runId, period: run.period }, p);
+    }
+  } else {
+    log.info(
+      { runId, entries: postings.length, mode: policy.autonomyMode, kill: policy.killSwitch },
+      "nothing posted — observe mode or kill switch",
+    );
   }
 
   const finished = new Date();
@@ -286,6 +322,14 @@ export async function executeRun(
       stages: {
         tiers: result.stages,
         autoMatchPct: result.autoMatchPct,
+        // What the run was allowed to do, recorded beside what it did. Reading
+        // a past close without this is guessing at which rules were in force.
+        policy: {
+          autonomyMode: policy.autonomyMode,
+          autonomyCapPaise: policy.autonomyCapPaise.toString(),
+          killSwitch: policy.killSwitch,
+          posted: posting,
+        },
         // The agent's own words, kept beside the verifier's verdict rather than
         // in place of it. A claim nobody proved is still worth showing.
         agent: { notes: agent.notes, usage: agent.usage },
@@ -319,13 +363,40 @@ export async function executeRun(
     totalRows: result.totalRows,
     autoMatchPct: result.autoMatchPct,
     exceptions: result.exceptions.length,
-    entries: postings.length,
+    entries: posting ? postings.length : 0,
   });
 
   log.info(
     { runId, matched: result.matchedRows, total: result.totalRows, entries: postings.length },
     "run finished",
   );
+
+  /**
+   * Two alerts, fired after the run is durable rather than before.
+   *
+   * Identity closure below 100% means a settlement does not agree with its own
+   * rows — a data problem upstream, not a matching one, and the tiers cannot
+   * fix it however good they get. Suspense above its ceiling means the close
+   * balanced by parking money rather than by explaining it. Both are quiet
+   * failures: the run says SCORED either way.
+   */
+  const closes = result.settlements.filter((s) => s.closes).length;
+  const closurePct = result.settlements.length === 0 ? 100 : (closes / result.settlements.length) * 100;
+  if (closurePct < 100) {
+    await alert(
+      "identity_closure",
+      `${result.settlements.length - closes} of ${result.settlements.length} settlements do not close against their own rows`,
+      { runId, period: run.period, closurePct: Math.round(closurePct * 10) / 10 },
+    );
+  }
+  if (result.heldPaise > policy.suspenseCeilingPaise) {
+    await alert(
+      "suspense_ceiling",
+      `${result.heldPaise} paise parked against a ceiling of ${policy.suspenseCeilingPaise}`,
+      { runId, period: run.period, heldPaise: result.heldPaise.toString() },
+    );
+  }
+
   return result;
 }
 
@@ -337,5 +408,6 @@ export async function failRun(database: Db, runId: string, err: unknown): Promis
     .set({ state: "FAILED", updatedAt: new Date() })
     .where(eq(runs.id, runId));
   await emit(database, runId, SEQ_FINISHED, "failed", { error: message.slice(0, 500) });
+  await alert("run_failed", message.slice(0, 300), { runId });
 }
 

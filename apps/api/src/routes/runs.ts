@@ -247,3 +247,79 @@ runsRouter.get("/v1/eval/scale", (_req, res, next) => {
     next(e);
   }
 });
+
+/**
+ * GET /v1/runs/:id/agreement — did the humans agree with it?
+ *
+ * The report that decides whether shadow mode can end. A run in `observe`
+ * reconciles everything and posts nothing, so the only evidence that its
+ * judgement is sound is whether the people working the queue afterwards
+ * reached the same conclusions it did.
+ *
+ * Agreement is measured per exception, on the one thing the engine committed
+ * to: whether it believed the class could be cleared automatically.
+ *
+ *   engine said auto-resolvable + a person LINKED it   → agreed
+ *   engine said auto-resolvable + a person WROTE IT OFF → the engine was wrong
+ *   engine said escalate       + a person WROTE IT OFF → agreed
+ *   engine said escalate       + a person LINKED it     → the engine was timid
+ *
+ * Timid and wrong are counted separately on purpose. Being too cautious costs
+ * an hour of somebody's morning; being wrong costs money, and averaging the two
+ * into one percentage hides exactly the number that matters.
+ */
+runsRouter.get("/v1/runs/:id/agreement", async (req, res, next) => {
+  if (!db) return needDb(res);
+  try {
+    const [run] = await db.select().from(runs).where(eq(runs.id, String(req.params.id)));
+    if (!run) return res.status(404).json({ error: "no such run" });
+
+    const rows = await db.select().from(exceptions).where(eq(exceptions.runId, run.id));
+    const decided = rows.filter((e) => e.status !== "OPEN" && e.resolution);
+    // "written off" is the wording reclass() writes; a link says "proven".
+    const wroteOff = (r: string) => /written off/i.test(r);
+
+    let agreedAuto = 0;
+    let agreedEscalate = 0;
+    let wrong = 0;
+    let timid = 0;
+    let valueWrongPaise = 0n;
+
+    for (const e of decided) {
+      const off = wroteOff(e.resolution ?? "");
+      if (e.autoResolvable && !off) agreedAuto += 1;
+      else if (e.autoResolvable && off) {
+        wrong += 1;
+        valueWrongPaise += e.amountPaise;
+      } else if (!e.autoResolvable && off) agreedEscalate += 1;
+      else timid += 1;
+    }
+
+    const agreed = agreedAuto + agreedEscalate;
+    const policy = (run.stages as { policy?: Record<string, unknown> } | null)?.policy ?? null;
+
+    res.json({
+      runId: run.id,
+      period: run.period,
+      // Null rather than 0 when nothing has been worked yet: a 0% agreement
+      // rate over zero decisions reads as a failure, and it is an absence.
+      agreementPct: decided.length === 0 ? null : Math.round((agreed / decided.length) * 1000) / 10,
+      decided: decided.length,
+      open: rows.length - decided.length,
+      agreedAuto,
+      agreedEscalate,
+      wrong,
+      timid,
+      valueWrongPaise,
+      policy,
+      note:
+        decided.length === 0
+          ? "Nobody has worked this queue yet, so there is nothing to agree with."
+          : wrong === 0
+            ? "No exception the engine would have cleared was written off by a person."
+            : `${wrong} exceptions the engine would have cleared were written off instead — that is the number that has to be zero before autonomy widens.`,
+    });
+  } catch (e) {
+    next(e);
+  }
+});

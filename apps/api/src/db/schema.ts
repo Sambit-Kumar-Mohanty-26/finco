@@ -426,6 +426,126 @@ export const llmCalls = pgTable(
   ],
 );
 
+/**
+ * Per-tenant policy. P8 moves these OUT of env, where they were a deploy-wide
+ * constant, into a row a controller can change and an auditor can read the
+ * history of.
+ *
+ * The kill switch is the load-bearing field. When it is on, nothing posts
+ * automatically — every outcome routes to review, whatever the verifier said —
+ * and a banner appears on every screen. It exists because the correct response
+ * to "something is wrong and I do not yet know what" is to stop posting, not to
+ * redeploy.
+ */
+export const policies = pgTable(
+  "policies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: text("tenant_id").notNull().default("demo"),
+    /** proven+unique claims below this post themselves. Above it, a person looks. */
+    autonomyCapPaise: money("autonomy_cap_paise"),
+    /** Rounding drift at or under this is absorbed rather than parked. */
+    materialityPaise: money("materiality_paise"),
+    /** The fortnight floor the cash page judges against, on p10. */
+    cashFloorPaise: money("cash_floor_paise"),
+    /**
+     * How much may sit in suspense before it is an alert.
+     *
+     * Suspense is a waiting room, not an account, and the number that says
+     * whether a close WORKED is how little is parked in it. A ceiling makes
+     * that a threshold somebody set rather than a figure nobody looked at.
+     */
+    suspenseCeilingPaise: money("suspense_ceiling_paise"),
+    /** observe | assist | auto — the three-position autonomy control. */
+    autonomyMode: text("autonomy_mode").notNull().default("assist"),
+    killSwitch: boolean("kill_switch").notNull().default(false),
+    killReason: text("kill_reason").notNull().default(""),
+    updatedBy: text("updated_by").notNull().default(""),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("policies_tenant_uk").on(t.tenantId)],
+);
+
+/**
+ * Razorpay webhook deliveries, stored before they are believed.
+ *
+ * Unique on the provider's event id, which is what makes redelivery a no-op —
+ * and Razorpay WILL redeliver, because it retries anything it did not get a
+ * 2xx for within a few seconds. The raw body is kept because the signature is
+ * over bytes, not over parsed JSON, and a re-verification after the fact is
+ * impossible from a re-serialised object.
+ */
+export const webhookEvents = pgTable(
+  "webhook_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: text("tenant_id").notNull().default("demo"),
+    provider: text("provider").notNull().default("razorpay"),
+    eventId: text("event_id").notNull(),
+    eventType: text("event_type").notNull().default(""),
+    signatureOk: boolean("signature_ok").notNull().default(false),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    /** Set once the event has been folded into a dataset. Null means received only. */
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("webhook_events_uk").on(t.provider, t.eventId),
+    index("webhook_events_type_idx").on(t.tenantId, t.eventType),
+  ],
+);
+
+/**
+ * The audit log, hash-chained.
+ *
+ * Each row carries the hash of the row before it, so removing or editing an
+ * entry breaks every hash after it and the break is detectable by replaying the
+ * chain. This is not tamper-PROOF — anyone with write access can recompute the
+ * whole chain — it is tamper-EVIDENT, which is the honest claim and the one
+ * that matters when somebody asks who approved a fifty-lakh write-off.
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: text("tenant_id").notNull().default("demo"),
+    seq: bigint("seq", { mode: "number" }).notNull(),
+    actorId: uuid("actor_id"),
+    actorEmail: text("actor_email").notNull().default(""),
+    action: text("action").notNull(),
+    subjectType: text("subject_type").notNull().default(""),
+    subjectRef: text("subject_ref").notNull().default(""),
+    detail: jsonb("detail").$type<Record<string, unknown>>().notNull().default({}),
+    prevHash: text("prev_hash").notNull().default(""),
+    hash: text("hash").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("audit_log_seq_uk").on(t.tenantId, t.seq)],
+);
+
+/**
+ * A close period and its lock.
+ *
+ * Locking is the point. Once a period is closed the books for it stop moving,
+ * so a later correction is a new entry in an open period rather than a quiet
+ * edit to a month somebody already reported on.
+ */
+export const periods = pgTable(
+  "periods",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: text("tenant_id").notNull().default("demo"),
+    period: text("period").notNull(), // YYYY-MM
+    state: text("state").notNull().default("OPEN"), // OPEN | LOCKED
+    /** Which checklist items are ticked, and by whom. */
+    checklist: jsonb("checklist").$type<Record<string, { at: string; by: string }>>().notNull().default({}),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedBy: text("locked_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("periods_tenant_uk").on(t.tenantId, t.period)],
+);
+
 export type Dataset = typeof datasets.$inferSelect;
 export type Settlement = typeof settlements.$inferSelect;
 export type ReconRow = typeof reconRows.$inferSelect;
@@ -441,3 +561,7 @@ export type JournalLineRow = typeof journalLines.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type LlmCall = typeof llmCalls.$inferSelect;
+export type Policy = typeof policies.$inferSelect;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type AuditEntry = typeof auditLog.$inferSelect;
+export type Period = typeof periods.$inferSelect;

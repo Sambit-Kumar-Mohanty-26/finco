@@ -20,6 +20,11 @@ services:
       - { key: DATABASE_URL, sync: false }
       - { key: ALLOWED_ORIGINS, sync: false }
       - { key: NODE_ENV, value: production }
+      # Optional, all of them. Absent means the feature is off, not broken:
+      # no webhook secret answers 503, no DSN never initialises Sentry.
+      - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }
+      - { key: ALERT_WEBHOOK_URL, sync: false }
+      - { key: SENTRY_DSN, sync: false }
 
   - type: worker
     name: finco-worker
@@ -31,6 +36,11 @@ services:
     envVars:
       - { key: DATABASE_URL, sync: false }
       - { key: NODE_ENV, value: production }
+      # The worker is where T5 and every alert actually fire, so it needs the
+      # Gemini key the API does not.
+      - { key: GEMINI_API_KEY, sync: false }
+      - { key: ALERT_WEBHOOK_URL, sync: false }
+      - { key: SENTRY_DSN, sync: false }
 
   - type: cron
     name: finco-recon-pull
@@ -42,3 +52,9 @@ services:
     envVars:
       - { key: DATABASE_URL, sync: false }
       - { key: NODE_ENV, value: production }
+      # Without these the pull logs that it is unconfigured and exits 0. A
+      # nightly red cross everyone learns to ignore is worse than no alert.
+      - { key: RAZORPAY_KEY_ID, sync: false }
+      - { key: RAZORPAY_KEY_SECRET, sync: false }
+      - { key: ALERT_WEBHOOK_URL, sync: false }
+      - { key: SENTRY_DSN, sync: false }

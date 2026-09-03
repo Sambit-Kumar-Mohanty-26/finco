@@ -4,6 +4,7 @@ import { ACCOUNTS, SUSPENSE } from "@finco/core";
 import { db } from "../db/index.ts";
 import { journalEntries } from "../db/schema.ts";
 import { attachActor } from "../auth.ts";
+import { scoped, tenantOf } from "../policy.ts";
 
 export const ledgerRouter = Router();
 ledgerRouter.use(attachActor);
@@ -24,7 +25,7 @@ const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } 
 ledgerRouter.get("/v1/ledger/trial-balance", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const tenantId = req.actor?.tenantId ?? "demo";
+    const tenantId = tenantOf(req.actor);
     const runId = String(req.query.runId ?? "");
     const period = String(req.query.period ?? "");
 
@@ -86,7 +87,7 @@ ledgerRouter.get("/v1/ledger/trial-balance", async (req, res, next) => {
 ledgerRouter.get("/v1/ledger/entries", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const tenantId = req.actor?.tenantId ?? "demo";
+    const tenantId = tenantOf(req.actor);
     const runId = String(req.query.runId ?? "");
     const account = String(req.query.account ?? "");
     const cursor = String(req.query.cursor ?? "");
@@ -117,7 +118,7 @@ ledgerRouter.get("/v1/ledger/entries", async (req, res, next) => {
       .from(journalEntries)
       .where(
         and(
-          eq(journalEntries.tenantId, tenantId),
+          scoped(journalEntries, tenantId),
           runId ? eq(journalEntries.runId, runId) : undefined,
           cursor ? sql`${journalEntries.id} > ${cursor}` : undefined,
           // Filtering by account still returns the WHOLE entry: half of a

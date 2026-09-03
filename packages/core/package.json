@@ -8,7 +8,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "check": "node --experimental-strip-types src/money.check.mts && node --experimental-strip-types src/domain.check.mts",
+    "check": "node --experimental-strip-types src/money.check.mts && node --experimental-strip-types src/domain.check.mts && node --experimental-strip-types src/forecast.check.mts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

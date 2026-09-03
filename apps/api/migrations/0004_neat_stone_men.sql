@@ -1,0 +1,1 @@
+ALTER TABLE "policies" ADD COLUMN "suspense_ceiling_paise" bigint DEFAULT 0 NOT NULL;

@@ -32,23 +32,28 @@ async function insertAll<T>(
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });
 
-/** POST /v1/datasets — ingest a scenario. `{ generate: 5000 }` seeds one. */
-datasetsRouter.post("/v1/datasets", async (req, res, next) => {
-  if (!db) return needDb(res);
-  try {
-    const body = req.body ?? {};
-    const size = Number(body.generate ?? 0);
-    const bundle = size > 0 ? buildScenario(size, Number(body.seed ?? 20260824)) : body;
-
-    if (!Array.isArray(bundle.settlements) || !Array.isArray(bundle.reconRows)) {
-      return res.status(400).json({
-        error: "expected { generate: n } or { settlements, reconRows, bankLines, erpInvoices }",
-      });
-    }
-    if (bundle.reconRows.length > 50_000) {
-      return res.status(413).json({ error: "50,000 rows is the ingest cap" });
-    }
-
+/**
+ * Ingest one bundle and return the dataset row.
+ *
+ * Extracted from the route because the nightly Razorpay pull needs the exact
+ * same mapping. Two copies of "which field is paise" is how a cron job ends up
+ * off by a factor of a hundred against the API that agrees with it.
+ */
+export async function ingestBundle(
+  bundle: {
+    settlements: Record<string, unknown>[];
+    reconRows: Record<string, unknown>[];
+    bankLines?: Record<string, unknown>[];
+    erpInvoices?: Record<string, unknown>[];
+  },
+  meta: {
+    name: string;
+    period: string;
+    source: string;
+    tenantId?: string;
+    seedSpec?: { size: number; seed: number } | null;
+  },
+) {
     const counts = {
       settlements: bundle.settlements.length,
       reconRows: bundle.reconRows.length,
@@ -56,17 +61,18 @@ datasetsRouter.post("/v1/datasets", async (req, res, next) => {
       erpInvoices: bundle.erpInvoices?.length ?? 0,
     };
 
-    const [ds] = await db
+    const [ds] = await db!
       .insert(datasets)
       .values({
-        name: body.name ?? (size > 0 ? `Seeded scenario · ${size} rows` : "Uploaded scenario"),
-        period: body.period ?? "2026-06",
-        source: size > 0 ? "seed" : "upload",
+        name: meta.name,
+        period: meta.period,
+        source: meta.source,
+        tenantId: meta.tenantId ?? "demo",
         counts,
-        seedSpec: size > 0 ? { size, seed: Number(body.seed ?? 20260824) } : null,
+        seedSpec: meta.seedSpec ?? null,
       })
       .returning();
-    if (!ds) return res.status(500).json({ error: "dataset insert returned nothing" });
+    if (!ds) throw new Error("dataset insert returned nothing");
 
     // Money arrives as decimal strings on the wire — JSON has no bigint — and
     // is converted exactly once, here at the boundary.
@@ -132,7 +138,35 @@ datasetsRouter.post("/v1/datasets", async (req, res, next) => {
       })),
     );
 
-    res.status(201).json({ ...ds, counts });
+  return { ...ds, counts };
+}
+
+/** POST /v1/datasets — ingest a scenario. `{ generate: 5000 }` seeds one. */
+datasetsRouter.post("/v1/datasets", async (req, res, next) => {
+  if (!db) return needDb(res);
+  try {
+    const body = req.body ?? {};
+    const size = Number(body.generate ?? 0);
+    const bundle = size > 0 ? buildScenario(size, Number(body.seed ?? 20260824)) : body;
+
+    if (!Array.isArray(bundle.settlements) || !Array.isArray(bundle.reconRows)) {
+      return res.status(400).json({
+        error: "expected { generate: n } or { settlements, reconRows, bankLines, erpInvoices }",
+      });
+    }
+    if (bundle.reconRows.length > 50_000) {
+      return res.status(413).json({ error: "50,000 rows is the ingest cap" });
+    }
+
+    const ds = await ingestBundle(bundle, {
+      name: body.name ?? (size > 0 ? `Seeded scenario · ${size} rows` : "Uploaded scenario"),
+      period: body.period ?? "2026-06",
+      source: size > 0 ? "seed" : "upload",
+      tenantId: req.actor?.tenantId,
+      seedSpec: size > 0 ? { size, seed: Number(body.seed ?? 20260824) } : null,
+    });
+
+    res.status(201).json(ds);
   } catch (e) {
     next(e);
   }
