@@ -36,6 +36,13 @@
       "when": 1788178717228,
       "tag": "0004_neat_stone_men",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788488439331,
+      "tag": "0005_natural_the_liberteens",
+      "breakpoints": true
     }
   ]
 }

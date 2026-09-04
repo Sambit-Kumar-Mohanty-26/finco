@@ -160,14 +160,27 @@ close runs on the five deterministic tiers. No `RAZORPAY_WEBHOOK_SECRET` and
 logs that it is unconfigured and exits **0**, because a nightly red cross
 everyone learns to ignore is worse than no alert. No `ALERT_WEBHOOK_URL` and
 alerts are still logged. No `SENTRY_DSN` and the SDK never initialises, which is
-how CI and local dev stay offline. `apps/api/.env.example` lists all of them
-with mock values; real ones go in `.env`, which is gitignored.
+how CI and local dev stay offline. No `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+and the Google button is not offered — email and password still work, so a
+missing key costs one sign-in option rather than locking everybody out.
+`apps/api/.env.example` lists all of them with mock values; real ones go in
+`.env`, which is gitignored.
+
+**Google sign-in** is the server-side authorization-code flow, hand-rolled, no
+OAuth library. It needs two things to line up exactly: `PUBLIC_API_URL`, because
+`<PUBLIC_API_URL>/v1/auth/google/callback` must byte-for-byte equal a redirect
+URI registered in the Google console, and `ALLOWED_ORIGINS`, whose first entry is
+where the browser is sent after a successful sign-in. Deriving the callback from
+the `Host` header instead would let a client pick it, which is why it is
+configured.
 
 ## Going live
 
 1. `pnpm db:migrate` — additive migrations only, so this is safe against a
    running deploy.
-2. Create the first tenant and an **approver** login. Policy is per tenant and
+2. Sign up at `/signup`. That creates a tenant with you as its **approver** —
+   there is no invite flow yet, so a second person signing up gets their own
+   workspace, not a seat in yours. Policy is per tenant and
    lives in the database, not in env: autonomy mode, autonomy cap, materiality,
    cash floor and suspense ceiling are all edited at `/settings/policy` and every
    change is written to the hash-chained audit log.

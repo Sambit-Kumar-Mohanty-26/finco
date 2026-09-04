@@ -81,14 +81,14 @@ export function SiteNav() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <a href="#login" className="hidden rounded-[6px] px-3 py-2 text-[14.5px] text-on-paper-hush transition-colors hover:text-on-paper sm:block">
+          <a href="/login" className="hidden rounded-[6px] px-3 py-2 text-[14.5px] text-on-paper-hush transition-colors hover:text-on-paper sm:block">
             Log in
           </a>
           <a
-            href="#start"
+            href="/signup"
             className="rounded-[7px] bg-on-paper px-4 py-2.5 text-[14px] text-white transition-colors duration-150 ease-[var(--ease-ui)] hover:bg-signal-deep"
           >
-            Book a close review
+            Start a workspace
           </a>
           <button
             onClick={() => setMobile((v) => !v)}
@@ -142,7 +142,8 @@ export function SiteNav() {
             </div>
           ))}
           <a href="#pricing" className="block py-2 text-[15px]">Pricing</a>
-          <a href="#login" className="block py-2 text-[15px]">Log in</a>
+          <a href="/login" className="block py-2 text-[15px]">Log in</a>
+          <a href="/signup" className="block py-2 text-[15px]">Start a workspace</a>
         </div>
       ) : null}
     </header>

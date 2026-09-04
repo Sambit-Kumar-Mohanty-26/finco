@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.ts";
-import { datasets, exceptions, journalLines, periods, runs } from "../db/schema.ts";
+import { datasets, exceptions, periods, runs } from "../db/schema.ts";
 import { attachActor, requireRole } from "../auth.ts";
 import { audit, scoped, tenantOf } from "../policy.ts";
 
@@ -62,20 +62,24 @@ async function evaluate(tenantId: string, period: string) {
     .from(exceptions)
     .where(scoped(exceptions, tenantId, eq(exceptions.status, "OPEN")));
 
+  // Lines carry no tenant of their own, so the tenant comes off the entry they
+  // belong to. Summing journal_lines alone would total EVERY tenant's books and
+  // fail this tenant's close over somebody else's suspense balance.
   const [sums] = await database
     .select({
-      debit: sql<string>`coalesce(sum(${journalLines.debitPaise}), 0)`,
-      credit: sql<string>`coalesce(sum(${journalLines.creditPaise}), 0)`,
+      debit: sql<string>`coalesce(sum(l.debit_paise), 0)`,
+      credit: sql<string>`coalesce(sum(l.credit_paise), 0)`,
     })
-    .from(journalLines);
+    .from(sql`journal_lines l join journal_entries e on e.id = l.entry_id`)
+    .where(sql`e.tenant_id = ${tenantId}`);
 
   const [suspense] = await database
     .select({
-      debit: sql<string>`coalesce(sum(${journalLines.debitPaise}), 0)`,
-      credit: sql<string>`coalesce(sum(${journalLines.creditPaise}), 0)`,
+      debit: sql<string>`coalesce(sum(l.debit_paise), 0)`,
+      credit: sql<string>`coalesce(sum(l.credit_paise), 0)`,
     })
-    .from(journalLines)
-    .where(sql`${journalLines.account} like '9999%'`);
+    .from(sql`journal_lines l join journal_entries e on e.id = l.entry_id`)
+    .where(sql`e.tenant_id = ${tenantId} and l.account like '9999%'`);
 
   const unproven = run?.unprovenPaise ?? 0n;
   const openCount = Number(openExc?.n ?? 0);

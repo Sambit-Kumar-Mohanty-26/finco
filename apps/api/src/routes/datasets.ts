@@ -5,6 +5,7 @@ import { db } from "../db/index.ts";
 import { bankLines, datasets, erpInvoices, reconRows, settlements } from "../db/schema.ts";
 import { buildScenario } from "../recon/scenario.ts";
 import { parseNarration } from "../recon/narration.ts";
+import { scoped, tenantOf } from "../policy.ts";
 
 export const datasetsRouter = Router();
 
@@ -172,13 +173,14 @@ datasetsRouter.post("/v1/datasets", async (req, res, next) => {
   }
 });
 
-/** GET /v1/datasets — newest first. */
-datasetsRouter.get("/v1/datasets", async (_req, res, next) => {
+/** GET /v1/datasets — newest first, this tenant only. */
+datasetsRouter.get("/v1/datasets", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
     const rows = await db
       .select()
       .from(datasets)
+      .where(scoped(datasets, tenantOf(req.actor)))
       .orderBy(sql`${datasets.createdAt} desc`)
       .limit(50);
     res.json({ datasets: rows });
@@ -187,10 +189,20 @@ datasetsRouter.get("/v1/datasets", async (_req, res, next) => {
   }
 });
 
+/**
+ * A dataset belonging to somebody else is 404, not 403.
+ *
+ * 403 would confirm the id exists, which turns this route into a way to probe
+ * for other tenants' datasets one uuid at a time. From outside the tenant there
+ * is no difference between "not yours" and "not there", and there should not be.
+ */
 datasetsRouter.get("/v1/datasets/:id", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const [ds] = await db.select().from(datasets).where(eq(datasets.id, req.params.id));
+    const [ds] = await db
+      .select()
+      .from(datasets)
+      .where(scoped(datasets, tenantOf(req.actor), eq(datasets.id, req.params.id)));
     if (!ds) return res.status(404).json({ error: "no such dataset" });
     res.json(ds);
   } catch (e) {
@@ -209,6 +221,15 @@ datasetsRouter.get("/v1/datasets/:id/rows", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
     const id = req.params.id;
+    // The child tables carry no tenant column of their own — they inherit it
+    // from the dataset. So the dataset is checked FIRST, and everything below
+    // reads rows of a dataset this tenant is known to own.
+    const [owner] = await db
+      .select({ id: datasets.id })
+      .from(datasets)
+      .where(scoped(datasets, tenantOf(req.actor), eq(datasets.id, id)));
+    if (!owner) return res.status(404).json({ error: "no such dataset" });
+
     const source = String(req.query.source ?? "recon");
     const limit = Math.min(Number(req.query.limit ?? 200), 500);
     const cursor = req.query.cursor ? String(req.query.cursor) : null;

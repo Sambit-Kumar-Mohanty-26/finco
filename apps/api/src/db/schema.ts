@@ -375,7 +375,9 @@ export const users = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     tenantId: text("tenant_id").notNull().default("demo"),
     email: text("email").notNull(),
-    passwordHash: text("password_hash").notNull(),
+    // Nullable: an account created through Google has no password and never
+    // will. A sentinel hash would be a password that something could match.
+    passwordHash: text("password_hash"),
     name: text("name").notNull().default(""),
     role: text("role").notNull().default("viewer"), // viewer | preparer | approver
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

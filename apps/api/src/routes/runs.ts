@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { db } from "../db/index.ts";
+import { scoped, tenantOf } from "../policy.ts";
 import { datasets, exceptions, matchLinks, runEvents, runs } from "../db/schema.ts";
 import { enqueue } from "../queue.ts";
 import { loadInputs, SEQ_FINISHED } from "../runner.ts";
@@ -30,7 +31,10 @@ runsRouter.post("/v1/runs", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
     const datasetId = String(req.body?.datasetId ?? "");
-    const [ds] = await db.select().from(datasets).where(eq(datasets.id, datasetId));
+    const [ds] = await db
+      .select()
+      .from(datasets)
+      .where(scoped(datasets, tenantOf(req.actor), eq(datasets.id, datasetId)));
     if (!ds) return res.status(404).json({ error: "no such dataset" });
 
     const hash = inputHash(ds.id, ds.counts ?? {});
@@ -59,10 +63,15 @@ runsRouter.post("/v1/runs", async (req, res, next) => {
   }
 });
 
-runsRouter.get("/v1/runs", async (_req, res, next) => {
+runsRouter.get("/v1/runs", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const rows = await db.select().from(runs).orderBy(sql`${runs.createdAt} desc`).limit(50);
+    const rows = await db
+      .select()
+      .from(runs)
+      .where(scoped(runs, tenantOf(req.actor)))
+      .orderBy(sql`${runs.createdAt} desc`)
+      .limit(50);
     res.json({ runs: rows });
   } catch (e) {
     next(e);
@@ -87,7 +96,10 @@ runsRouter.get("/v1/runs/:id/stream", async (req, res, next) => {
   if (!db) return needDb(res);
   const runId = req.params.id;
   try {
-    const [run] = await db.select().from(runs).where(eq(runs.id, runId));
+    const [run] = await db
+      .select()
+      .from(runs)
+      .where(scoped(runs, tenantOf(req.actor), eq(runs.id, runId)));
     if (!run) return res.status(404).json({ error: "no such run" });
 
     // A reconnecting EventSource sends the last id it saw; anything at or below
@@ -144,7 +156,10 @@ runsRouter.get("/v1/runs/:id/stream", async (req, res, next) => {
 runsRouter.get("/v1/runs/:id", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const [run] = await db.select().from(runs).where(eq(runs.id, req.params.id));
+    const [run] = await db
+      .select()
+      .from(runs)
+      .where(scoped(runs, tenantOf(req.actor), eq(runs.id, req.params.id)));
     if (!run) return res.status(404).json({ error: "no such run" });
     const [links, events, [counts]] = await Promise.all([
       db
@@ -183,9 +198,15 @@ runsRouter.get("/v1/runs/:id", async (req, res, next) => {
 runsRouter.get("/v1/runs/:id/scorecard", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const [run] = await db.select().from(runs).where(eq(runs.id, req.params.id));
+    const [run] = await db
+      .select()
+      .from(runs)
+      .where(scoped(runs, tenantOf(req.actor), eq(runs.id, req.params.id)));
     if (!run?.datasetId) return res.status(404).json({ error: "no such run" });
-    const [ds] = await db.select().from(datasets).where(eq(datasets.id, run.datasetId));
+    const [ds] = await db
+      .select()
+      .from(datasets)
+      .where(scoped(datasets, tenantOf(req.actor), eq(datasets.id, run.datasetId)));
 
     const input = await loadInputs(db, run.datasetId);
     const replay = reconcile(input);
@@ -271,7 +292,10 @@ runsRouter.get("/v1/eval/scale", (_req, res, next) => {
 runsRouter.get("/v1/runs/:id/agreement", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const [run] = await db.select().from(runs).where(eq(runs.id, String(req.params.id)));
+    const [run] = await db
+      .select()
+      .from(runs)
+      .where(scoped(runs, tenantOf(req.actor), eq(runs.id, String(req.params.id))));
     if (!run) return res.status(404).json({ error: "no such run" });
 
     const rows = await db.select().from(exceptions).where(eq(exceptions.runId, run.id));

@@ -6,7 +6,7 @@ import { exceptions, journalEntries, matchLinks, runs } from "../db/schema.ts";
 import { attachActor, requireRole } from "../auth.ts";
 import { loadInputs, postEntry } from "../runner.ts";
 import { verifyOne, type Proposal } from "../recon/engine.ts";
-import { scoped } from "../policy.ts";
+import { scoped, tenantOf } from "../policy.ts";
 
 export const exceptionsRouter = Router();
 exceptionsRouter.use(attachActor);
@@ -87,7 +87,12 @@ exceptionsRouter.get("/v1/exceptions", async (req, res, next) => {
 exceptionsRouter.get("/v1/exceptions/:id", async (req, res, next) => {
   if (!db) return needDb(res);
   try {
-    const [row] = await db.select().from(exceptions).where(eq(exceptions.id, String(req.params.id)));
+    const [row] = await db
+      .select()
+      .from(exceptions)
+      .where(scoped(exceptions, tenantOf(req.actor), eq(exceptions.id, String(req.params.id))));
+    // Same 404 for "does not exist" and "not yours", as on the write routes
+    // below: a different status would confirm the id belongs to another tenant.
     if (!row) return res.status(404).json({ error: "no such exception" });
     // The evidence panel needs the links that touch the same subject, so a
     // reviewer sees what the engine already tried and exactly why it refused.

@@ -25,6 +25,11 @@ services:
       - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }
       - { key: ALERT_WEBHOOK_URL, sync: false }
       - { key: SENTRY_DSN, sync: false }
+      # Google sign-in. PUBLIC_API_URL must match the redirect URI registered
+      # in the Google console exactly — this service's own public URL.
+      - { key: GOOGLE_CLIENT_ID, sync: false }
+      - { key: GOOGLE_CLIENT_SECRET, sync: false }
+      - { key: PUBLIC_API_URL, sync: false }
 
   - type: worker
     name: finco-worker

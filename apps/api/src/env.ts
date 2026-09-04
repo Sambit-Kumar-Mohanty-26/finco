@@ -60,9 +60,21 @@ export const env = {
   // No DSN, no Sentry, no network calls. That is how CI and local dev stay
   // offline; pino still records every error either way.
   sentryDsn: process.env.SENTRY_DSN ?? null,
-  // Render, Vercel and GitHub Actions each expose the commit under a different name
+  // Google sign-in. Absent means the button is not offered and the routes
+  // answer 503 — email and password still work, so a missing key degrades one
+  // option rather than locking everybody out.
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? null,
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? null,
+  // Where Google sends the browser back. It must match the redirect URI
+  // registered in the Google console EXACTLY, so it is configured rather than
+  // derived from the Host header — a header the client controls.
+  publicApiUrl: (process.env.PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, ""),
+  // Every platform exposes the commit under a different name. Without a match
+  // the release tag is "local", and every Sentry issue in production collapses
+  // into one undated bucket — so an unrecognised host is worth a line here.
   gitSha:
     process.env.RENDER_GIT_COMMIT ??
+    process.env.RAILWAY_GIT_COMMIT_SHA ??
     process.env.VERCEL_GIT_COMMIT_SHA ??
     process.env.GITHUB_SHA ??
     "local",

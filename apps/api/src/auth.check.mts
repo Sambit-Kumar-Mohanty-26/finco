@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { hashPassword, readCookie, requireRole, verifyPassword, type Actor } from "./auth.ts";
+import { readIdToken } from "./routes/auth.ts";
 
 // --- password hashing ---------------------------------------------------------
 const hash = await hashPassword("correct horse battery staple");
@@ -69,4 +70,52 @@ assert.equal(run("viewer", viewer), "next");
 // An unknown role is refused rather than defaulting to something permissive.
 assert.equal((run("viewer", { ...viewer, role: "admin" as Actor["role"] }) as Res).code, 403);
 
-console.log("auth: scrypt round-trips, salts differ, cookies parse exactly, roles rank viewer<preparer<approver");
+// --- google id tokens ---------------------------------------------------------
+//
+// The signature is not checked (the token arrives over TLS straight from
+// Google's token endpoint), so EVERY other claim has to be, and this is the
+// only thing standing between a stray token and a session.
+
+const CLIENT = "1234.apps.googleusercontent.com";
+const NOW = 1_800_000_000_000;
+
+const jwt = (claims: Record<string, unknown>) =>
+  ["e30", Buffer.from(JSON.stringify(claims)).toString("base64url"), "sig"].join(".");
+
+const good = {
+  aud: CLIENT,
+  iss: "https://accounts.google.com",
+  exp: Math.floor(NOW / 1000) + 3600,
+  email: "Priya@Example.com",
+  email_verified: true,
+  name: "Priya",
+};
+
+assert.deepEqual(readIdToken(jwt(good), CLIENT, NOW), { email: "priya@example.com", name: "Priya" },
+  "a good token must parse, and the email must be lowercased for the unique index");
+assert.deepEqual(readIdToken(jwt({ ...good, iss: "accounts.google.com" }), CLIENT, NOW)?.email,
+  "priya@example.com", "google issues both spellings of iss");
+
+// Each of these is a real attack, not a malformed-input case.
+const refuse: [string, string][] = [
+  [jwt({ ...good, aud: "999.apps.googleusercontent.com" }), "a token minted for another client"],
+  [jwt({ ...good, iss: "accounts.google.com.evil.test" }), "a lookalike issuer"],
+  [jwt({ ...good, email_verified: false }), "an unverified email — the account-takeover path"],
+  [jwt({ ...good, email_verified: "true" }), "a string that is not the boolean true"],
+  [jwt({ ...good, exp: Math.floor(NOW / 1000) - 1 }), "an expired token"],
+  [jwt({ ...good, exp: "9999999999" }), "an exp that is not a number"],
+  [jwt({ ...good, email: "" }), "no email at all"],
+  [jwt({ ...good, email: "not-an-address" }), "an email with no @"],
+  ["", "an empty string"],
+  ["a.b", "too few segments"],
+  ["a.b.c.d", "too many segments"],
+  ["a.!!!.c", "a payload that is not JSON"],
+];
+for (const [token, why] of refuse) {
+  assert.equal(readIdToken(token, CLIENT, NOW), null, `accepted ${why}`);
+}
+
+console.log(
+  "auth: scrypt round-trips, salts differ, cookies parse exactly, roles rank viewer<preparer<approver; " +
+    "the google token check refuses a foreign aud, a lookalike issuer, an unverified email and an expired exp",
+);

@@ -39,7 +39,10 @@ function istToday(): string {
 async function build(tenantId: string, datasetId: string | null, days: number) {
   const database = db!;
   const [ds] = datasetId
-    ? await database.select().from(datasets).where(eq(datasets.id, datasetId))
+    ? await database
+        .select()
+        .from(datasets)
+        .where(scoped(datasets, tenantId, eq(datasets.id, datasetId)))
     : await database
         .select()
         .from(datasets)
