@@ -1,8 +1,16 @@
-# Render blueprint — three Node entrypoints from one build, plus the cron.
+# Render blueprint — the free tier, which is one web service and nothing else.
 #
-# Deliberately NOT the free tier for api/worker: a spun-down service breaks SSE
-# and cold-starts every demo, and a spun-down worker silently stops consuming
-# jobs, so runs simply never start.
+# Free instance types cover web services only: background workers and cron jobs
+# both need a paid plan. So the queue consumer runs inside the API process
+# (INLINE_WORKER) rather than not running at all, and the nightly Razorpay pull
+# has no home here — until this is on starter, run `pnpm cron:recon-pull` from a
+# GitHub Actions schedule, or accept that the webhook is the only ingest.
+#
+# ponytail: one free dyno, 512 MB and 0.1 CPU shared between HTTP and closes,
+# spun down after 15 minutes idle. The upgrade path is plan: starter here, a
+# second `type: worker` service running `start:worker` with INLINE_WORKER unset,
+# and a `type: cron` on "30 0 * * *" (06:00 IST) running `cron:recon-pull`.
+#
 # NODE_ENV=production makes pnpm skip devDependencies, so installs pass
 # --prod=false: the build-time typecheck needs typescript and @types, which
 # are dev deps. tsx is a real runtime dependency here (start runs TypeScript
@@ -12,7 +20,7 @@ services:
     name: finco-api
     runtime: node
     region: singapore
-    plan: starter
+    plan: free
     buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @finco/api typecheck
     startCommand: pnpm --filter @finco/api start
     healthCheckPath: /health
@@ -20,8 +28,12 @@ services:
       - { key: DATABASE_URL, sync: false }
       - { key: ALLOWED_ORIGINS, sync: false }
       - { key: NODE_ENV, value: production }
+      # No worker service on this plan, so this process consumes the queue too.
+      - { key: INLINE_WORKER, value: "true" }
       # Optional, all of them. Absent means the feature is off, not broken:
-      # no webhook secret answers 503, no DSN never initialises Sentry.
+      # no webhook secret answers 503, no DSN never initialises Sentry, no
+      # Gemini key closes on the five deterministic tiers.
+      - { key: GEMINI_API_KEY, sync: false }
       - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }
       - { key: ALERT_WEBHOOK_URL, sync: false }
       - { key: SENTRY_DSN, sync: false }
@@ -30,36 +42,3 @@ services:
       - { key: GOOGLE_CLIENT_ID, sync: false }
       - { key: GOOGLE_CLIENT_SECRET, sync: false }
       - { key: PUBLIC_API_URL, sync: false }
-
-  - type: worker
-    name: finco-worker
-    runtime: node
-    region: singapore
-    plan: starter
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false
-    startCommand: pnpm --filter @finco/api start:worker
-    envVars:
-      - { key: DATABASE_URL, sync: false }
-      - { key: NODE_ENV, value: production }
-      # The worker is where T5 and every alert actually fire, so it needs the
-      # Gemini key the API does not.
-      - { key: GEMINI_API_KEY, sync: false }
-      - { key: ALERT_WEBHOOK_URL, sync: false }
-      - { key: SENTRY_DSN, sync: false }
-
-  - type: cron
-    name: finco-recon-pull
-    runtime: node
-    region: singapore
-    schedule: "30 0 * * *" # 06:00 IST
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false
-    startCommand: pnpm --filter @finco/api cron:recon-pull
-    envVars:
-      - { key: DATABASE_URL, sync: false }
-      - { key: NODE_ENV, value: production }
-      # Without these the pull logs that it is unconfigured and exits 0. A
-      # nightly red cross everyone learns to ignore is worse than no alert.
-      - { key: RAZORPAY_KEY_ID, sync: false }
-      - { key: RAZORPAY_KEY_SECRET, sync: false }
-      - { key: ALERT_WEBHOOK_URL, sync: false }
-      - { key: SENTRY_DSN, sync: false }

@@ -41,7 +41,7 @@ Run from the repository root.
 
 ## `pnpm check` — the gate that matters
 
-Thirteen check files, no test framework, plain `node:assert`. They exist
+Fourteen check files, no test framework, plain `node:assert`. They exist
 because the figures on this site are not decorative: they are a ledger, and a ledger that
 does not tie is worse than no ledger.
 
@@ -73,6 +73,16 @@ the kill switch holds a *proven* under-cap link at **every** tier, not just the
 model one; observe mode posts nothing; and the webhook HMAC rejects a tampered
 body, a truncated digest and the wrong secret. This is the security path, so it
 is checked like one.
+
+**CSV** (`apps/web`) — the ingest path a real merchant actually uses. Quoted
+commas, doubled quotes, embedded newlines and Excel's BOM all parse; rupees
+become paise **without floating point**, so `1,234.56` is exactly `123456` and a
+column with three decimals is refused rather than rounded into a figure nobody
+entered; `(1,234.56)` and a trailing `DR` are negative; dates are day-first
+because `new Date("01/02/2026")` disagrees with itself across runtimes and the
+answer decides which period a settlement lands in; a real HDFC statement header
+maps with no per-bank branch; and a wrongly mapped column fails naming the
+file's own row number.
 
 **Ledger** (`apps/web`) — the trial balance balances, the journal balances, the
 9999 suspense balance equals the sum of the open exceptions *and* equals the
@@ -106,6 +116,7 @@ finco/
 │       │   ├── site/        nav, footer, motion primitives
 │       │   ├── demos/       animated product surfaces
 │       │   └── money/       <Money> — paise in, formatted out
+│       ├── lib/csv.ts       CSV → bundle: parsing, column match, rupees→paise
 │       ├── lib/fixtures/    the data every screen renders
 │       ├── e2e/             Playwright QA + logo cutout tooling
 │       └── public/          logo assets
@@ -147,8 +158,19 @@ time, so changing it requires a redeploy.
 **API → Render.** Leave Root Directory **empty**: `apps/api` depends on
 `packages/core`, and Render only redeploys on changes inside the root directory
 you set — so scoping it to `apps/api` would leave production running stale money
-code with nothing failing. `render.yaml` declares all three services and every
-variable each one needs.
+code with nothing failing.
+
+`render.yaml` targets the **free tier**, which is one web service and nothing
+else — background workers and cron jobs both need a paid plan. Two consequences,
+both deliberate. The queue consumer runs inside the API process
+(`INLINE_WORKER=true`), because a close that never starts is worse than a close
+that shares a CPU with requests. And the nightly Razorpay pull has no home:
+until this is on `starter`, either schedule `pnpm cron:recon-pull` from GitHub
+Actions or accept the webhook as the only ingest. A free service also spins down
+after fifteen minutes idle, so the first request after a quiet spell waits about
+a minute, and a run left mid-flight resumes from its last checkpoint when the
+service next wakes — replay, not loss. The upgrade path is in the blueprint's
+comments.
 
 Both services and the database sit in **Singapore**. Neon's free plan has no
 India region and Render has none at all, so payment data does not stay in India
@@ -165,6 +187,12 @@ and the Google button is not offered — email and password still work, so a
 missing key costs one sign-in option rather than locking everybody out.
 `apps/api/.env.example` lists all of them with mock values; real ones go in
 `.env`, which is gitignored.
+
+**Ingest needs no credentials.** CSV upload covers all four sources and is the
+only path that works for a bank statement, which has no API anywhere in India.
+The Razorpay webhook and nightly pull are written but hold one operator-level
+key in the environment — the wrong credential for a multi-tenant product, which
+is why neither is wired up by default.
 
 **Google sign-in** is the server-side authorization-code flow, hand-rolled, no
 OAuth library. It needs two things to line up exactly: `PUBLIC_API_URL`, because

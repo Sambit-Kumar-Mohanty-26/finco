@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Wrap } from "@/components/layout/Wrap";
 import { SeedButton } from "@/components/app/SeedButton";
+import { UploadPanel } from "@/components/app/UploadPanel";
 import { apiGet, isErr, type Dataset } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -28,12 +29,16 @@ export default async function DatasetsPage() {
           <SeedButton />
         </div>
 
+        <div className="mt-12">
+          <UploadPanel />
+        </div>
+
         {isErr(res) ? (
           <Empty title="The API is not answering." detail={res.error} />
         ) : res.datasets.length === 0 ? (
           <Empty
             title="No datasets yet."
-            detail="Seed a scenario to get started. Every size is reconciled by the worker, so the browser never waits on a close."
+            detail="Upload your own CSVs above, or seed a scenario with a known answer key. Either way the close runs in the worker, so the browser never waits on it."
           />
         ) : (
           <div className="mt-12 overflow-hidden rounded-[12px] border border-line-light bg-white">

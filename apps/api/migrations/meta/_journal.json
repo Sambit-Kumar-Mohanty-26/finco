@@ -43,6 +43,13 @@
       "when": 1788488439331,
       "tag": "0005_natural_the_liberteens",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788505454948,
+      "tag": "0006_peaceful_skullbuster",
+      "breakpoints": true
     }
   ]
 }

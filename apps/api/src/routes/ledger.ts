@@ -3,11 +3,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { ACCOUNTS, SUSPENSE } from "@finco/core";
 import { db } from "../db/index.ts";
 import { journalEntries } from "../db/schema.ts";
-import { attachActor } from "../auth.ts";
 import { scoped, tenantOf } from "../policy.ts";
 
 export const ledgerRouter = Router();
-ledgerRouter.use(attachActor);
 
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });

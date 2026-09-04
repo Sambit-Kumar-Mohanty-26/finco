@@ -10,7 +10,7 @@ import {
   settlements,
   webhookEvents,
 } from "../db/schema.ts";
-import { attachActor, requireRole } from "../auth.ts";
+import { requireRole } from "../auth.ts";
 import {
   AUTONOMY_MODES,
   audit,
@@ -24,7 +24,6 @@ import {
 import { env } from "../env.ts";
 
 export const settingsRouter = Router();
-settingsRouter.use(attachActor);
 
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });

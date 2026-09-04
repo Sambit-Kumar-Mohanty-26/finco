@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "check:ledger": "node --experimental-strip-types lib/fixtures/ledger.check.mts",
     "check:review": "node --experimental-strip-types lib/review.check.mts",
-    "check": "pnpm check:ledger && pnpm check:review",
+    "check:csv": "node --experimental-strip-types lib/csv.check.mts",
+    "check": "pnpm check:ledger && pnpm check:review && pnpm check:csv",
     "lint": "eslint ."
   },
   "dependencies": {

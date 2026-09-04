@@ -40,14 +40,19 @@ export async function alert(
   log.error({ alert: code, ...detail }, `${ALERTS[code]}: ${message}`);
 
   if (!env.alertWebhookUrl) return;
+  const line = `[${env.nodeEnv}] ${ALERTS[code]} — ${message}`;
   try {
     await fetch(env.alertWebhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      // Slack, Discord and Teams all accept a bare { text }, so this works
-      // against all three without a per-provider formatter.
+      // Slack and Teams read `text`; Discord requires `content` and 400s on a
+      // body with neither. Sending both is one extra key and covers all three
+      // without a per-provider formatter — each ignores the field it does not
+      // know. A wrong key here fails silently, which is the worst way for an
+      // alerting path to be broken.
       body: JSON.stringify({
-        text: `[${env.nodeEnv}] ${ALERTS[code]} — ${message}`,
+        text: line,
+        content: line,
         code,
         detail,
       }),

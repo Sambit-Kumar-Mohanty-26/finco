@@ -3,13 +3,12 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { EXCEPTION_SPECS, SUSPENSE, type ExceptionCode } from "@finco/core";
 import { db } from "../db/index.ts";
 import { exceptions, journalEntries, matchLinks, runs } from "../db/schema.ts";
-import { attachActor, requireRole } from "../auth.ts";
+import { requireRole } from "../auth.ts";
 import { loadInputs, postEntry } from "../runner.ts";
 import { verifyOne, type Proposal } from "../recon/engine.ts";
 import { scoped, tenantOf } from "../policy.ts";
 
 export const exceptionsRouter = Router();
-exceptionsRouter.use(attachActor);
 
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });

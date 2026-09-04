@@ -3,11 +3,9 @@ import { desc, eq } from "drizzle-orm";
 import { ageing, floorCheck, fitPropensity, forecast } from "@finco/core";
 import { db } from "../db/index.ts";
 import { datasets, reconRows } from "../db/schema.ts";
-import { attachActor } from "../auth.ts";
 import { readPolicy, scoped, tenantOf } from "../policy.ts";
 
 export const cashRouter = Router();
-cashRouter.use(attachActor);
 
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });

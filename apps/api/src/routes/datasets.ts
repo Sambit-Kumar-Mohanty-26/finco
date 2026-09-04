@@ -33,6 +33,29 @@ async function insertAll<T>(
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });
 
+/** Thrown by ingestBundle when the unique index refuses a re-upload. */
+export class DuplicateBundle extends Error {
+  constructor() {
+    super("these exact rows are already ingested");
+  }
+}
+
+/**
+ * A stable fingerprint of what is about to be inserted.
+ *
+ * Hashing the request body would make an added whitespace a different dataset.
+ * Hashing the rows themselves means the same export uploaded twice is the same
+ * hash, whatever the file was called or which browser serialised it.
+ */
+export function bundleHash(bundle: Record<string, unknown[]>): string {
+  const h = createHash("sha256");
+  for (const key of ["settlements", "reconRows", "bankLines", "erpInvoices"]) {
+    h.update(key);
+    for (const row of bundle[key] ?? []) h.update(JSON.stringify(row));
+  }
+  return h.digest("hex");
+}
+
 /**
  * Ingest one bundle and return the dataset row.
  *
@@ -53,6 +76,7 @@ export async function ingestBundle(
     source: string;
     tenantId?: string;
     seedSpec?: { size: number; seed: number } | null;
+    contentHash?: string | null;
   },
 ) {
     const counts = {
@@ -71,9 +95,14 @@ export async function ingestBundle(
         tenantId: meta.tenantId ?? "demo",
         counts,
         seedSpec: meta.seedSpec ?? null,
+        contentHash: meta.contentHash ?? null,
       })
+      .onConflictDoNothing({ target: [datasets.tenantId, datasets.contentHash] })
       .returning();
-    if (!ds) throw new Error("dataset insert returned nothing");
+    // No row back means the unique index caught it: these exact rows are
+    // already ingested. The caller turns that into a 409 rather than a second
+    // copy of a month nobody can tell apart from the first.
+    if (!ds) throw new DuplicateBundle();
 
     // Money arrives as decimal strings on the wire — JSON has no bigint — and
     // is converted exactly once, here at the boundary.
@@ -165,10 +194,19 @@ datasetsRouter.post("/v1/datasets", async (req, res, next) => {
       source: size > 0 ? "seed" : "upload",
       tenantId: req.actor?.tenantId,
       seedSpec: size > 0 ? { size, seed: Number(body.seed ?? 20260824) } : null,
+      // Seeded scenarios are meant to be re-seeded, so only uploads are
+      // fingerprinted. Two identical seeds are a deliberate act; two identical
+      // uploads are a mistake.
+      contentHash: size > 0 ? null : bundleHash(bundle),
     });
 
     res.status(201).json(ds);
   } catch (e) {
+    if (e instanceof DuplicateBundle) {
+      return res.status(409).json({
+        error: "those rows are already uploaded — check the datasets list before uploading again",
+      });
+    }
     next(e);
   }
 });

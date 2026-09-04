@@ -2,11 +2,10 @@ import { Router } from "express";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.ts";
 import { datasets, exceptions, periods, runs } from "../db/schema.ts";
-import { attachActor, requireRole } from "../auth.ts";
+import { requireRole } from "../auth.ts";
 import { audit, scoped, tenantOf } from "../policy.ts";
 
 export const periodsRouter = Router();
-periodsRouter.use(attachActor);
 
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });

@@ -23,21 +23,34 @@ import {
 const money = (name: string) => bigint(name, { mode: "bigint" }).notNull().default(sql`0`);
 
 /** An uploaded scenario. Everything else is scoped to one of these. */
-export const datasets = pgTable("datasets", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  tenantId: text("tenant_id").notNull().default("demo"),
-  name: text("name").notNull(),
-  period: text("period").notNull(), // YYYY-MM
-  source: text("source").notNull().default("upload"), // upload | seed | razorpay
-  counts: jsonb("counts").$type<Record<string, number>>().notNull().default({}),
-  /**
-   * How a seeded dataset was generated, so the scorer can rebuild its truth
-   * file from scratch. The truth itself is NEVER stored: nothing the engine can
-   * read may contain the answers, or the scorecard measures its own fixture.
-   */
-  seedSpec: jsonb("seed_spec").$type<{ size: number; seed: number } | null>(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const datasets = pgTable(
+  "datasets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: text("tenant_id").notNull().default("demo"),
+    name: text("name").notNull(),
+    period: text("period").notNull(), // YYYY-MM
+    source: text("source").notNull().default("upload"), // upload | seed | razorpay
+    counts: jsonb("counts").$type<Record<string, number>>().notNull().default({}),
+    /**
+     * How a seeded dataset was generated, so the scorer can rebuild its truth
+     * file from scratch. The truth itself is NEVER stored: nothing the engine
+     * can read may contain the answers, or the scorecard measures its own
+     * fixture.
+     */
+    seedSpec: jsonb("seed_spec").$type<{ size: number; seed: number } | null>(),
+    /**
+     * SHA-256 of the ingested rows. The failure mode of manual upload is
+     * uploading June twice, and a double-counted month of settlements is not
+     * something a reconciliation can detect — both copies close perfectly. A
+     * unique index refuses it in the database rather than in a route anyone can
+     * forget to call. Nullable: seeded datasets have no file behind them.
+     */
+    contentHash: text("content_hash"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("datasets_content_uk").on(t.tenantId, t.contentHash)],
+);
 
 /**
  * A Razorpay settlement: the netting event. `amountPaise` is what the bank

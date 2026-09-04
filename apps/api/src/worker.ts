@@ -20,6 +20,19 @@ import { executeRun, failRun } from "./runner.ts";
  * stage. Nothing double-posts because every write is keyed and idempotent.
  */
 
+/**
+ * Render's free tier has no background worker service, so this loop can also be
+ * hosted inside the API process (INLINE_WORKER=true). When it is, the process
+ * belongs to the HTTP server: draining must not call process.exit and pull the
+ * floor out from under in-flight requests. Everything else is identical — the
+ * queue does not care which process claims a job.
+ *
+ * ponytail: one shared process means a 50k-row close competes with request
+ * latency on 0.1 CPU. Split it back out onto its own service the moment closes
+ * get big enough to notice.
+ */
+const INLINE = process.env.INLINE_WORKER === "true";
+
 const WORKER_ID = `${process.env.RENDER_INSTANCE_ID ?? "local"}-${randomUUID().slice(0, 8)}`;
 const IDLE_MS = 1000;
 
@@ -66,7 +79,7 @@ async function loop(): Promise<void> {
     if (!worked) await new Promise((r) => setTimeout(r, IDLE_MS));
   }
   log.info("worker drained");
-  process.exit(0);
+  if (!INLINE) process.exit(0);
 }
 
 log.info({ workerId: WORKER_ID, db: Boolean(db) }, "worker up");
@@ -77,7 +90,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
     log.info({ sig }, "worker draining — the current tier finishes, then we stop");
     draining = true;
     // Hard deadline: Render gives 30s. A tier that has not committed by then
-    // is simply replayed by the next worker.
-    setTimeout(() => process.exit(0), 25_000).unref();
+    // is simply replayed by the next worker. Inline, the server owns shutdown.
+    if (!INLINE) setTimeout(() => process.exit(0), 25_000).unref();
   });
 }

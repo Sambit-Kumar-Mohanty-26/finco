@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "./env.ts";
 import { log } from "./log.ts";
 import { health } from "./routes/health.ts";
+import { attachActor } from "./auth.ts";
 import { datasetsRouter } from "./routes/datasets.ts";
 import { runsRouter } from "./routes/runs.ts";
 import { authRouter } from "./routes/auth.ts";
@@ -115,6 +116,18 @@ app.use(limit(300), express.json({ limit: "1mb" }));
  */
 app.set("json replacer", (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
 
+/**
+ * One actor resolution for the whole app, ahead of every router.
+ *
+ * It used to live in six of the nine routers, and datasets and runs were not
+ * among them — they saw req.actor only because authRouter is mounted at root
+ * ahead of them and ran it as a side effect. That made mount ORDER the thing
+ * standing between one tenant and another's books, silently. Once, here, where
+ * reordering cannot break it. No cookie means no session query, so /health and
+ * /webhooks cost nothing.
+ */
+app.use(attachActor);
+
 app.use(health);
 app.use(authRouter);
 app.use(datasetsRouter);
@@ -149,6 +162,11 @@ const server = app.listen(env.port, () => {
     "api listening",
   );
 });
+
+// The free tier has no worker service, so the queue consumer runs in this
+// process instead. One dyno, one loop: closes are slower and share the CPU with
+// requests, but runs actually start. Unset it on any plan with a real worker.
+if (process.env.INLINE_WORKER === "true") await import("./worker.ts");
 
 // Render sends SIGTERM on deploy; drain rather than drop in-flight requests
 for (const sig of ["SIGTERM", "SIGINT"] as const) {

@@ -16,7 +16,6 @@ import {
 } from "../auth.ts";
 
 export const authRouter = Router();
-authRouter.use(attachActor);
 
 const needDb = (res: { status: (n: number) => { json: (b: unknown) => unknown } }) =>
   res.status(503).json({ error: "database not configured" });
