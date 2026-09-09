@@ -9,7 +9,9 @@
 # ponytail: one free dyno, 512 MB and 0.1 CPU shared between HTTP and closes,
 # spun down after 15 minutes idle. The upgrade path is plan: starter here, a
 # second `type: worker` service running `start:worker` with INLINE_WORKER unset,
-# and a `type: cron` on "30 0 * * *" (06:00 IST) running `cron:recon-pull`.
+# and a `type: cron` on "30 0 * * *" (06:00 IST) running `cron:recon-pull` with
+# CRON_TENANT_ID set to the tenant those Razorpay keys belong to — the pull
+# refuses to start without it rather than file a merchant's month under "demo".
 #
 # NODE_ENV=production makes pnpm skip devDependencies, so installs pass
 # --prod=false: the build-time typecheck needs typescript and @types, which

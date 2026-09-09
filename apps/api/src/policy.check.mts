@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { AUTONOMY_MODES, linkHash, mayAutoPost, verifyChain, POLICY_DEFAULTS } from "./policy.ts";
+import { eq } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { AUTONOMY_MODES, linkHash, mayAutoPost, scoped, tenantOf, verifyChain, POLICY_DEFAULTS } from "./policy.ts";
+import { datasets, runs } from "./db/schema.ts";
 import { signatureMatches } from "./routes/webhooks.ts";
 import { AUTONOMY_CAP_PAISE, reconcile, type ReconcileInput } from "./recon/engine.ts";
 
@@ -179,8 +182,45 @@ assert.equal(signatureMatches(raw, "zz" + sig.slice(2), secret), false, "non-hex
 const tampered = Buffer.from(raw.toString().replace("evt_1", "evt_2"));
 assert.equal(signatureMatches(tampered, sig, secret), false, "an edited body kept its signature");
 
+// --- tenant scoping -----------------------------------------------------------
+
+// Two tenant leaks have already shipped and been fixed in this codebase, both
+// the same shape: a query that filtered on everything except the tenant. Every
+// scoped read now routes through one helper, so what is worth proving is that
+// the helper emits the predicate rather than being decoration around a where.
+const dialect = new PgDialect();
+
+const one = dialect.sqlToQuery(scoped(datasets, "t1"));
+assert.match(one.sql, /"tenant_id" = \$1/, "scoped() emitted no tenant predicate");
+assert.deepEqual(one.params, ["t1"]);
+
+// The cron passes two extra conditions. A scoped() that kept the tenant but
+// dropped the rest would match ANY of that tenant's datasets, skip the ingest as
+// already-done, and log success — a silent no-op is the failure mode here, not
+// an error.
+const many = dialect.sqlToQuery(
+  scoped(datasets, "t1", eq(datasets.name, "Razorpay 2026-06-01"), eq(datasets.source, "razorpay")),
+);
+assert.deepEqual(many.params, ["t1", "Razorpay 2026-06-01", "razorpay"], "scoped() dropped a condition");
+
+// undefined is how an optional filter is passed. It must vanish, not become a
+// null comparison that silently matches nothing.
+const sparse = dialect.sqlToQuery(scoped(runs, "t1", undefined, eq(runs.period, "2026-06")));
+assert.deepEqual(sparse.params, ["t1", "2026-06"]);
+
+// The tenant is the FIRST bound parameter in every case, which is what makes
+// `grep -c 'scoped('` a usable answer to "is this query filtered".
+assert.equal(many.params[0], "t1");
+
+// tenantOf takes a partial actor: the nightly cron acts for a tenant with no
+// user behind it, and a fake Actor built to satisfy a signature would land a
+// fake email in the audit chain.
+assert.equal(tenantOf({ tenantId: "t1" }), "t1");
+assert.equal(tenantOf(undefined), "demo", "no session is the demo tenant, not a crash");
+
 console.log(
   `policy: a one-row edit breaks the chain at seq 3; the kill switch holds a proven ` +
     `${amountPaise} paise link at every tier; observe posts nothing; ` +
-    `HMAC rejects a tampered body, a truncated digest and the wrong secret`,
+    `HMAC rejects a tampered body, a truncated digest and the wrong secret; ` +
+    `scoped() binds the tenant first and keeps every extra condition`,
 );

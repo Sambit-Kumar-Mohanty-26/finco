@@ -54,6 +54,12 @@ export const env = {
   // this codebase ever writes to Razorpay.
   razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? null,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? null,
+  // Whose books the nightly pull writes into. One set of Razorpay keys belongs
+  // to ONE merchant account, and nothing in the API response says which tenant
+  // that account is, so it is stated rather than inferred. Unset is fine while
+  // the keys are unset; once they are not, the cron refuses to run rather than
+  // file a live merchant's settlements under a tenant nobody logs into.
+  cronTenantId: process.env.CRON_TENANT_ID ?? null,
   // Any incoming-webhook URL that accepts { text } — Slack, Discord, Teams.
   // Without it alerts are still logged; they are just not pushed anywhere.
   alertWebhookUrl: process.env.ALERT_WEBHOOK_URL ?? null,

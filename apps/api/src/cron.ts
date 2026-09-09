@@ -1,12 +1,12 @@
 import { Sentry } from "./instrument.ts";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "./db/index.ts";
 import { datasets, runs } from "./db/schema.ts";
 import { env } from "./env.ts";
 import { log } from "./log.ts";
 import { enqueue } from "./queue.ts";
 import { ingestBundle, inputHash } from "./routes/datasets.ts";
-import { audit } from "./policy.ts";
+import { audit, scoped } from "./policy.ts";
 
 /**
  * Entrypoint 3 — the nightly Razorpay pull (06:00 IST = 00:30 UTC).
@@ -120,6 +120,19 @@ async function main(): Promise<void> {
     log.info("cron: RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set — nothing to pull");
     return;
   }
+  // Keys are set, so this pull is about to write real settlements into somebody's
+  // books. WHICH books cannot be worked out from the data: one API key is one
+  // merchant account, and the response never names a tenant. Defaulting to
+  // "demo" would be the worst available answer — the month would ingest, close
+  // cleanly, and belong to nobody, which no reconciliation can detect.
+  //
+  // ponytail: one tenant per deployment, because the credentials in the
+  // environment are one merchant's. Loop over tenant_connections instead once
+  // key material lives in the database.
+  if (!env.cronTenantId) {
+    throw new Error("RAZORPAY keys are set but CRON_TENANT_ID is not — refusing to guess whose books these are");
+  }
+  const tenantId = env.cronTenantId;
 
   const { y, m, d, iso } = yesterdayIst();
   const period = iso.slice(0, 7);
@@ -140,25 +153,29 @@ async function main(): Promise<void> {
   const [existing] = await db
     .select()
     .from(datasets)
-    .where(and(eq(datasets.name, name), eq(datasets.source, "razorpay")));
-  const ds = existing ?? (await ingestBundle(toBundle(recon, setls), { name, period, source: "razorpay" }));
+    .where(scoped(datasets, tenantId, eq(datasets.name, name), eq(datasets.source, "razorpay")));
+  const ds =
+    existing ??
+    (await ingestBundle(toBundle(recon, setls), { name, period, source: "razorpay", tenantId }));
 
   const hash = inputHash(ds.id, (ds as { counts: Record<string, number> }).counts ?? {});
   const [run] =
-    (await db.select().from(runs).where(and(eq(runs.datasetId, ds.id), eq(runs.inputHash, hash)))) ??
-    [];
+    (await db
+      .select()
+      .from(runs)
+      .where(scoped(runs, tenantId, eq(runs.datasetId, ds.id), eq(runs.inputHash, hash)))) ?? [];
   const target =
     run ??
     (
       await db
         .insert(runs)
-        .values({ datasetId: ds.id, period, inputHash: hash, state: "QUEUED" })
+        .values({ tenantId, datasetId: ds.id, period, inputHash: hash, state: "QUEUED" })
         .returning()
     )[0];
   if (!target) throw new Error("run insert returned nothing");
 
   await enqueue(db, target.id, ds.id);
-  await audit(undefined, "cron.pull", { type: "dataset", ref: ds.id }, { day: iso, rows: recon.length, runId: target.id });
+  await audit({ tenantId }, "cron.pull", { type: "dataset", ref: ds.id }, { day: iso, rows: recon.length, runId: target.id });
   log.info({ day: iso, datasetId: ds.id, runId: target.id }, "cron: run queued");
 }
 
