@@ -23,8 +23,10 @@ services:
     runtime: node
     region: singapore
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @finco/api typecheck
-    preDeployCommand: pnpm --filter @finco/api db:migrate
+    # Free Render services do not run pre-deploy commands reliably. Run the
+    # idempotent migration step during the successful build instead, so a
+    # deploy cannot receive traffic with an outdated auth schema.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @finco/api typecheck && pnpm --filter @finco/api db:migrate
     startCommand: pnpm --filter @finco/api start
     healthCheckPath: /health
     envVars:
