@@ -1,4 +1,3 @@
-import { Wrap } from "@/components/layout/Wrap";
 import { AuthForm } from "@/components/app/AuthForm";
 import { apiGet, isErr } from "@/lib/api";
 
@@ -21,15 +20,53 @@ export default async function SignupPage({
   ]);
 
   return (
-    <main className="py-20">
-      <Wrap className="max-w-[420px]">
-        <AuthForm mode="signup" google={!isErr(config) && config.google} notice={params.error} />
-        <p className="mt-8 border-t border-line-light pt-5 font-mono text-[10.5px] leading-[1.6] text-ink-hush">
-          You become the approver of a workspace of one. Adding your team needs an
-          invite flow, which is not built yet — until it is, a colleague who signs
-          up gets their own workspace, not a seat in yours.
-        </p>
-      </Wrap>
+    <main className="auth-page">
+      <div className="auth-layout">
+        <section className="auth-story">
+          <div className="auth-orbit auth-orbit-one" />
+          <div className="auth-orbit auth-orbit-two" />
+          <div className="relative z-10">
+            <div className="auth-eyebrow">
+              <span className="auth-pulse" />
+              your books, your proof
+            </div>
+            <h1 className="auth-display">
+              A clearer
+              <br />
+              <em>close starts here.</em>
+            </h1>
+            <p className="auth-lede">
+              Create a private workspace for your books. Bring in your data,
+              resolve what is real, and lock each period with confidence.
+            </p>
+            <div className="auth-signal-grid">
+              <div><span className="auth-signal-value">01</span><span className="auth-signal-label">private workspace</span></div>
+              <div><span className="auth-signal-value">∞</span><span className="auth-signal-label">evidence trail</span></div>
+              <div><span className="auth-signal-value">₹</span><span className="auth-signal-label">paise precise</span></div>
+            </div>
+          </div>
+          <div className="auth-dial" aria-hidden="true">
+            <div className="auth-dial-ring auth-dial-ring-one" />
+            <div className="auth-dial-ring auth-dial-ring-two" />
+            <div className="auth-dial-core">
+              <span className="auth-dial-kicker">workspace state</span>
+              <strong>READY</strong>
+              <span className="auth-dial-value">₹ -</span>
+            </div>
+            <span className="auth-dial-mark auth-dial-mark-one">IMPORT</span>
+            <span className="auth-dial-mark auth-dial-mark-two">MATCH</span>
+            <span className="auth-dial-mark auth-dial-mark-three">PROVE</span>
+          </div>
+          <span className="auth-corner-label">FINCO / 01</span>
+        </section>
+        <section className="auth-panel">
+          <div className="auth-panel-top"><span>New workspace</span><span className="auth-lock">● encrypted session</span></div>
+          <div className="auth-form-card">
+            <AuthForm mode="signup" google={!isErr(config) && config.google} notice={params.error} />
+          </div>
+          <p className="auth-panel-foot">A workspace of one, ready to grow.<span> &copy; FinCo</span></p>
+        </section>
+      </div>
     </main>
   );
 }

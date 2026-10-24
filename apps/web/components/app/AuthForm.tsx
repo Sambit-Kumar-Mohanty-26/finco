@@ -83,14 +83,14 @@ export function AuthForm({
 
   return (
     <>
-      <h1 className="font-display text-[30px] leading-[1.1] tracking-[-0.02em]">{copy.title}</h1>
-      <p className="mt-2 font-mono text-[11px] leading-relaxed text-ink-hush">{copy.blurb}</p>
+      <h2 className="font-display text-[34px] leading-[1.05] tracking-[-0.035em] text-ink">{copy.title}</h2>
+      <p className="mt-3 max-w-[34ch] font-mono text-[11px] leading-[1.65] text-ink-hush">{copy.blurb}</p>
 
       {google ? (
         <>
           <a
             href={`${API_BASE}/v1/auth/google`}
-            className="mt-8 flex w-full items-center justify-center gap-2.5 border border-line-light bg-white px-5 py-2.5 text-[13.5px] transition-colors hover:border-ink/25"
+            className="mt-8 flex w-full items-center justify-center gap-2.5 rounded-[2px] border border-line-light bg-white px-5 py-3 text-[13.5px] transition-all hover:-translate-y-0.5 hover:border-ink/30 hover:shadow-card"
           >
             <GoogleMark />
             Continue with Google
@@ -120,7 +120,7 @@ export function AuthForm({
         <button
           type="submit"
           disabled={busy}
-          className="w-full bg-ink px-5 py-2.5 font-mono text-[11px] tracking-[0.06em] text-on-ink uppercase disabled:opacity-30"
+          className="group relative w-full overflow-hidden bg-ink px-5 py-3 font-mono text-[11px] tracking-[0.08em] text-on-ink uppercase transition-transform hover:-translate-y-0.5 disabled:opacity-30"
         >
           {busy ? "…" : copy.button}
         </button>
@@ -163,7 +163,7 @@ function Field({
         required={required}
         minLength={minLength}
         autoComplete={autoComplete}
-        className="mt-1.5 w-full border border-line-light bg-white px-3 py-2 font-mono text-[13px] outline-none focus:border-ink"
+        className="mt-1.5 w-full rounded-[2px] border border-line-light bg-paper-cool px-3.5 py-3 font-mono text-[13px] outline-none transition-colors placeholder:text-ink-hush focus:border-signal-deep focus:bg-white"
       />
     </label>
   );
