@@ -24,6 +24,7 @@ services:
     region: singapore
     plan: free
     buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @finco/api typecheck
+    preDeployCommand: pnpm --filter @finco/api db:migrate
     startCommand: pnpm --filter @finco/api start
     healthCheckPath: /health
     envVars:
